@@ -1,0 +1,1336 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Taskr",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/flow_versions/{flow_version_id}/flow_nodes": {
+      "post": {
+        "tags": [
+          "Flow Nodes"
+        ],
+        "summary": "Create Flow Node",
+        "description": "Create a new flow node within a flow version.\n\nValidates that the target flow version exists and is still in \"draft\"\nstatus, then delegates creation to the repository layer.\n\nArgs:\n    flow_version_id: The ID of the flow version that will own the node.\n    body: The flow node creation payload.\n\nReturns:\n    The newly created flow node record.\n\nRaises:\n    HTTPException: 404 if the flow version does not exist, or 400 if it is\n        not in draft status.",
+        "operationId": "create_flow_node_flow_versions__flow_version_id__flow_nodes_post",
+        "parameters": [
+          {
+            "name": "flow_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Flow Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowNodeCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs": {
+      "get": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "List Runs",
+        "description": "List all runs.\n\nReturns:\n    A list of RunListItem records, ordered by creation time.",
+        "operationId": "list_runs_runs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RunListItem"
+                  },
+                  "type": "array",
+                  "title": "Response List Runs Runs Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Create Run",
+        "description": "Create a new run for a flow.\n\nIf no body is provided, the seeded \"soda-comparison\" demo flow is used\nwith an empty context. This keeps the endpoint usable for quick manual\ntests while also allowing a frontend to specify which flow to run and\nwhat initial context to pass.\n\nArgs:\n    body: Optional run creation payload containing the flow slug and context.\n\nReturns:\n    A RunResponse containing the created run and its initial node states.",
+        "operationId": "create_run_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateRunRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows": {
+      "get": {
+        "tags": [
+          "Flows"
+        ],
+        "summary": "List Flows",
+        "description": "List all flows.\n\nReturns:\n    A list of FlowResponse records.",
+        "operationId": "list_flows_flows_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FlowResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Flows Flows Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flow_versions/{flow_version_id}": {
+      "get": {
+        "tags": [
+          "Flow Versions"
+        ],
+        "summary": "Get Flow Version",
+        "description": "Retrieve a flow version and its full node tree.\n\nArgs:\n    flow_version_id: The ID of the flow version.\n\nReturns:\n    A FlowVersionResponse containing the version metadata and nested nodes.\n\nRaises:\n    HTTPException: 404 if the flow version does not exist.",
+        "operationId": "get_flow_version_flow_versions__flow_version_id__get",
+        "parameters": [
+          {
+            "name": "flow_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Flow Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowVersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/questions": {
+      "get": {
+        "tags": [
+          "Questions"
+        ],
+        "summary": "Get Run Questions",
+        "description": "List all open questions for a run.\n\nArgs:\n    run_id: The ID of the run.\n\nReturns:\n    A list of open QuestionResponse records.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
+        "operationId": "get_run_questions_runs__run_id__questions_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuestionResponse"
+                  },
+                  "title": "Response Get Run Questions Runs  Run Id  Questions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/tick": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Tick Run",
+        "description": "Advance a run by one execution tick.\n\nA tick evaluates pending node states, executes the next ready node, and\nupdates the run's status. This endpoint returns the run after the tick has\nbeen applied.\n\nArgs:\n    run_id: The ID of the run to advance.\n\nReturns:\n    A RunResponse reflecting the run state after the tick.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
+        "operationId": "tick_run_runs__run_id__tick_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Get Run",
+        "description": "Retrieve a single run by ID.\n\nArgs:\n    run_id: The ID of the run to retrieve.\n\nReturns:\n    A RunResponse containing the run metadata and node states.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
+        "operationId": "get_run_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/node-states": {
+      "get": {
+        "tags": [
+          "Node States"
+        ],
+        "summary": "List Node States",
+        "description": "List all node states associated with a run.\n\nArgs:\n    run_id: The ID of the parent run.\n\nReturns:\n    A dictionary with a single key, \"node_states\", containing the public\n    representations of each node state.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
+        "operationId": "list_node_states_runs__run_id__node_states_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeStatesListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/node-states/{node_state_id}": {
+      "get": {
+        "tags": [
+          "Node States"
+        ],
+        "summary": "Get Node State",
+        "description": "Retrieve a single node state by run ID and node state ID.\n\nArgs:\n    run_id: The ID of the parent run.\n    node_state_id: The ID of the node state to retrieve.\n\nReturns:\n    The public representation of the node state.\n\nRaises:\n    HTTPException: 404 if the run or node state does not exist, or if the\n        node state belongs to a different run.",
+        "operationId": "get_node_state_runs__run_id__node_states__node_state_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "node_state_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node State Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/node-states/{node_state_id}/questions": {
+      "get": {
+        "tags": [
+          "Questions"
+        ],
+        "summary": "Get Node State Questions",
+        "description": "List all questions associated with a node state.\n\nArgs:\n    run_id: The ID of the parent run.\n    node_state_id: The ID of the node state whose questions are queried.\n\nReturns:\n    A dictionary with a single key, \"questions\", containing the question\n    records.\n\nRaises:\n    HTTPException: 404 if the run or node state does not exist, or if the\n        node state belongs to a different run.",
+        "operationId": "get_node_state_questions_runs__run_id__node_states__node_state_id__questions_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "node_state_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node State Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeStateQuestionsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/node-states/{node_state_id}/answer": {
+      "post": {
+        "tags": [
+          "Questions"
+        ],
+        "summary": "Answer Node State Question",
+        "description": "Answer the first open question for a node state.\n\nThe endpoint answers the oldest open question associated with the node\nstate. It is the caller's responsibility to ensure that questions are\nanswered in the order they were raised.\n\nArgs:\n    run_id: The ID of the parent run.\n    node_state_id: The ID of the node state whose question is answered.\n    body: The answer payload.\n\nReturns:\n    A dictionary with key \"status\" set to \"answered\".\n\nRaises:\n    HTTPException: 404 if the run or node state does not exist, 400 if there\n        is no open question to answer.",
+        "operationId": "answer_node_state_question_runs__run_id__node_states__node_state_id__answer_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "node_state_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node State Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AnswerRequest": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer"
+        ],
+        "title": "AnswerRequest",
+        "description": "Payload used to answer a question that has paused a node state.\n\nAttributes:\n    answer: The answer text supplied by the caller."
+      },
+      "AnswerResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "AnswerResponse",
+        "description": "Response returned after answering a question."
+      },
+      "CreateRunRequest": {
+        "properties": {
+          "flow_slug": {
+            "type": "string",
+            "title": "Flow Slug",
+            "default": "soda-comparison"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "title": "CreateRunRequest",
+        "description": "Payload used to create a new run.\n\nAttributes:\n    flow_slug: The flow to execute. Defaults to the seeded demo flow.\n    context: Optional initial context for the run."
+      },
+      "FlowNodeCreateRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "ord": {
+            "type": "integer",
+            "title": "Ord"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Id"
+          },
+          "parent_node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Node Id"
+          },
+          "binding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Id"
+          },
+          "input_mapping": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Mapping"
+          },
+          "output_mapping": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Mapping"
+          },
+          "policy_refs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Refs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "ord",
+          "title"
+        ],
+        "title": "FlowNodeCreateRequest",
+        "description": "Payload used to create a new node inside a flow version.\n\nAttributes:\n    kind: The node type (e.g., \"question\", \"action\").\n    ord: The display / execution order of the node within the flow.\n    title: Human-readable title for the node.\n    node_id: Optional stable identifier for the node.\n    parent_node_id: Optional identifier of a parent node, for nesting.\n    binding_id: Optional binding reference for external integrations.\n    input_mapping: Optional mapping of input fields for this node.\n    output_mapping: Optional mapping of output fields for this node.\n    policy_refs: Optional policy references attached to the node."
+      },
+      "FlowNodeResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "ord": {
+            "type": "integer",
+            "title": "Ord"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "parent_node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Node Id"
+          },
+          "binding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Id"
+          },
+          "input_mapping": {
+            "title": "Input Mapping"
+          },
+          "output_mapping": {
+            "title": "Output Mapping"
+          },
+          "items_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Path"
+          },
+          "failure_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Policy"
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/FlowNodeResponse"
+            },
+            "type": "array",
+            "title": "Children",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "ord",
+          "title"
+        ],
+        "title": "FlowNodeResponse",
+        "description": "Public representation of a flow node, including children.\n\nAttributes:\n    id: Node identifier.\n    kind: Node kind (\"api\", \"hermes\", \"foreach\").\n    ord: Sibling order.\n    title: Display title.\n    parent_node_id: Parent identifier, if any.\n    binding_id: Integration binding, if any.\n    input_mapping: Mapping used to build node input.\n    output_mapping: Mapping used to write node output.\n    items_path: For foreach nodes, the path to the list being iterated.\n    failure_policy: How failures are handled.\n    children: Nested child nodes for foreach containers."
+      },
+      "FlowResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug",
+          "question"
+        ],
+        "title": "FlowResponse",
+        "description": "Public representation of a flow.\n\nAttributes:\n    id: Unique identifier for the flow.\n    title: Human-readable title.\n    slug: URL-friendly identifier.\n    question: One-line summary of what the flow answers."
+      },
+      "FlowVersionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "flow_id": {
+            "type": "string",
+            "title": "Flow Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/FlowNodeResponse"
+            },
+            "type": "array",
+            "title": "Nodes",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "flow_id",
+          "version",
+          "status"
+        ],
+        "title": "FlowVersionResponse",
+        "description": "Public representation of a flow version and its full node tree.\n\nAttributes:\n    id: Unique identifier for the flow version.\n    flow_id: Owning flow identifier.\n    version: Version number.\n    status: \"draft\" or \"active\".\n    nodes: Top-level nodes with nested children."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "NodeStateQuestionsResponse": {
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionResponse"
+            },
+            "type": "array",
+            "title": "Questions",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "NodeStateQuestionsResponse",
+        "description": "Wrapper for a list of questions on a node state."
+      },
+      "NodeStateResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "node_id": {
+            "type": "string",
+            "title": "Node Id"
+          },
+          "node_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Title"
+          },
+          "node_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Kind"
+          },
+          "loop_iteration_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loop Iteration Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "binding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Id"
+          },
+          "binding_snapshot": {
+            "title": "Binding Snapshot"
+          },
+          "external_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "raw_output": {
+            "title": "Raw Output"
+          },
+          "output": {
+            "title": "Output"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "attempt": {
+            "type": "integer",
+            "title": "Attempt"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "run_id",
+          "node_id",
+          "status",
+          "attempt"
+        ],
+        "title": "NodeStateResponse",
+        "description": "Public representation of a single node state.\n\nAttributes:\n    id: Unique identifier for the node state.\n    run_id: Parent run identifier.\n    node_id: Identifier of the flow node being executed.\n    node_title: Display title of the flow node.\n    node_kind: Kind of the flow node (\"api\", \"hermes\", \"foreach\").\n    loop_iteration_id: For nodes inside a foreach loop, the iteration id.\n    status: Current execution status (e.g., \"pending\", \"running\", \"completed\", \"blocked\").\n    binding_id: Integration binding used, if any.\n    binding_snapshot: Snapshot of the binding configuration at execution time.\n    external_ref: External reference returned by the integration, if any.\n    input: Resolved input passed to the node, if available.\n    raw_output: Raw output returned by the integration, if available.\n    output: Mapped output after applying output_mapping, if available.\n    error_code: Error code if the node failed.\n    error_message: Error message if the node failed.\n    attempt: Number of attempts made.\n    created_at: ISO timestamp when the node state was created.\n    started_at: ISO timestamp when execution started.\n    finished_at: ISO timestamp when execution finished.\n    updated_at: ISO timestamp of the last update."
+      },
+      "NodeStatesListResponse": {
+        "properties": {
+          "node_states": {
+            "items": {
+              "$ref": "#/components/schemas/NodeStateResponse"
+            },
+            "type": "array",
+            "title": "Node States",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "NodeStatesListResponse",
+        "description": "Wrapper for a list of node states."
+      },
+      "QuestionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "node_state_id": {
+            "type": "string",
+            "title": "Node State Id"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "options": {
+            "title": "Options"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "node_state_id",
+          "prompt",
+          "status"
+        ],
+        "title": "QuestionResponse",
+        "description": "Public representation of a question raised during node execution.\n\nAttributes:\n    id: Unique identifier for the question.\n    node_state_id: Identifier of the node state that raised the question.\n    prompt: Text prompt shown to the user.\n    options: Optional list of selectable options or structured choices.\n    status: Current status of the question (e.g., \"open\", \"answered\").\n    created_at: ISO timestamp when the question was created."
+      },
+      "RunListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "flow_id": {
+            "type": "string",
+            "title": "Flow Id"
+          },
+          "flow_version_id": {
+            "type": "string",
+            "title": "Flow Version Id"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "flow_id",
+          "flow_version_id"
+        ],
+        "title": "RunListItem",
+        "description": "Public representation of a run in list views.\n\nAttributes:\n    id: Run identifier.\n    status: Run status.\n    flow_id: Owning flow identifier.\n    flow_version_id: Executed flow version.\n    pause_reason: Reason for pause, if any.\n    created_at: ISO timestamp.\n    started_at: ISO timestamp.\n    finished_at: ISO timestamp."
+      },
+      "RunResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "flow_id": {
+            "type": "string",
+            "title": "Flow Id"
+          },
+          "flow_version_id": {
+            "type": "string",
+            "title": "Flow Version Id"
+          },
+          "context": {
+            "title": "Context"
+          },
+          "pause_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Reason"
+          },
+          "failure_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Summary"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "node_states": {
+            "items": {
+              "$ref": "#/components/schemas/NodeStateResponse"
+            },
+            "type": "array",
+            "title": "Node States",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "flow_id",
+          "flow_version_id",
+          "context"
+        ],
+        "title": "RunResponse",
+        "description": "Public representation of a run and its associated node states.\n\nAttributes:\n    id: Unique identifier for the run.\n    status: Current run status (e.g., \"pending\", \"running\", \"paused\").\n    flow_id: Identifier of the flow being executed.\n    flow_version_id: Identifier of the flow version being executed.\n    context: Execution context (arbitrary JSON-compatible data).\n    pause_reason: Reason the run is paused, if applicable.\n    failure_summary: Summary of any failure, if applicable.\n    created_at: ISO timestamp when the run was created.\n    started_at: ISO timestamp when the run started, if available.\n    finished_at: ISO timestamp when the run finished, if available.\n    node_states: List of node state records joined with node metadata."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Flows",
+      "description": "Discover and manage the top-level flows that Taskr can execute."
+    },
+    {
+      "name": "Runs",
+      "description": "Create and advance execution runs for a selected flow."
+    },
+    {
+      "name": "Flow Versions",
+      "description": "Inspect and manage versioned flow definitions for a flow."
+    },
+    {
+      "name": "Node States",
+      "description": "Inspect and interact with the runtime states of individual flow nodes."
+    },
+    {
+      "name": "Questions",
+      "description": "View and answer questions raised by pausing node states."
+    },
+    {
+      "name": "Flow Nodes",
+      "description": "Create and inspect nodes inside a flow version."
+    }
+  ]
+}
