@@ -107,15 +107,15 @@ class FlowVersionResponse(BaseModel):
     """Public representation of a flow version and its full node tree.
 
     Attributes:
-        id: Version identifier.
-        goal_id: Owning goal identifier.
+        id: Unique identifier for the flow version.
+        flow_id: Owning flow identifier.
         version: Version number.
         status: "draft" or "active".
         nodes: Top-level nodes with nested children.
     """
 
     id: str
-    goal_id: str
+    flow_id: str
     version: int
     status: str
     nodes: list[FlowNodeResponse] = []
@@ -153,7 +153,7 @@ class RunResponse(BaseModel):
     Attributes:
         id: Unique identifier for the run.
         status: Current run status (e.g., "pending", "running", "paused").
-        goal_id: Identifier of the goal being executed.
+        flow_id: Identifier of the flow being executed.
         flow_version_id: Identifier of the flow version being executed.
         context: Execution context (arbitrary JSON-compatible data).
         pause_reason: Reason the run is paused, if applicable.
@@ -166,7 +166,7 @@ class RunResponse(BaseModel):
 
     id: str
     status: str
-    goal_id: str
+    flow_id: str
     flow_version_id: str
     context: Any
     pause_reason: str | None = None
@@ -203,7 +203,7 @@ class RunListItem(BaseModel):
     Attributes:
         id: Run identifier.
         status: Run status.
-        goal_id: Owning goal identifier.
+        flow_id: Owning flow identifier.
         flow_version_id: Executed flow version.
         pause_reason: Reason for pause, if any.
         created_at: ISO timestamp.
@@ -213,7 +213,7 @@ class RunListItem(BaseModel):
 
     id: str
     status: str
-    goal_id: str
+    flow_id: str
     flow_version_id: str
     pause_reason: str | None = None
     created_at: str | None = None
@@ -331,15 +331,15 @@ def create_flow_node(flow_version_id: str, body: FlowNodeCreateRequest):
 
 @app.post("/runs", response_model=RunResponse)
 def create_run(body: CreateRunRequest | None = None):
-    """Create a new run for a goal.
+    """Create a new run for a flow.
 
-    If no body is provided, the seeded "soda-comparison" demo goal is used
+    If no body is provided, the seeded "soda-comparison" demo flow is used
     with an empty context. This keeps the endpoint usable for quick manual
-    tests while also allowing a frontend to specify which goal to run and
+    tests while also allowing a frontend to specify which flow to run and
     what initial context to pass.
 
     Args:
-        body: Optional run creation payload containing the goal slug and context.
+        body: Optional run creation payload containing the flow slug and context.
 
     Returns:
         A RunResponse containing the created run and its initial node states.
@@ -347,30 +347,30 @@ def create_run(body: CreateRunRequest | None = None):
     # Build a runner that can both persist data and execute logic.
     runner = _get_runner()
 
-    # Ensure demo data exists (goals, flow versions, flow nodes, etc.).
+    # Ensure demo data exists (flows, flow versions, flow nodes, etc.).
     runner.repo.seed_data()
 
-    # Use the provided goal slug and context, or fall back to the demo defaults.
-    goal_slug = body.goal_slug if body else "soda-comparison"
+    # Use the provided flow slug and context, or fall back to the demo defaults.
+    flow_slug = body.flow_slug if body else "soda-comparison"
     context = body.context if body else {}
 
-    # Create a new run for the requested goal.
-    run = runner.create_run(goal_slug, context)
+    # Create a new run for the requested flow.
+    run = runner.create_run(flow_slug, context)
 
     # Marshal the run record into the public response shape.
     return _build_run_response(run, runner.repo)
 
 
-@app.get("/goals", response_model=list[GoalResponse])
-def list_goals():
-    """List all goals.
+@app.get("/flows", response_model=list[FlowResponse], tags=["Flows"])
+def list_flows():
+    """List all flows.
 
     Returns:
-        A list of GoalResponse records.
+        A list of FlowResponse records.
     """
     repo = _get_repo()
     repo.seed_data()
-    return repo.load_all_goals()
+    return repo.load_all_flows()
 
 
 @app.get("/runs", response_model=list[RunListItem])
@@ -386,7 +386,7 @@ def list_runs():
         {
             "id": r["id"],
             "status": r["status"],
-            "goal_id": r["goal_id"],
+            "flow_id": r["flow_id"],
             "flow_version_id": r["flow_version_id"],
             "pause_reason": r.get("pause_reason"),
             "created_at": r.get("created_at"),
@@ -698,7 +698,7 @@ def _build_run_response(run: dict[str, Any], repo: TaskrRepository) -> dict[str,
     return {
         "id": run["id"],
         "status": run["status"],
-        "goal_id": run["goal_id"],
+        "flow_id": run["flow_id"],
         "flow_version_id": run["flow_version_id"],
         "context": run.get("context"),
         "pause_reason": run.get("pause_reason"),

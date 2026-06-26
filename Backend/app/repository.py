@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from typing import Any
 
 # Paths to the project root, the SQLite database file, and the canonical schema DDL.
-# The DB is created automatically on first connection if the 'goals' table is missing.
+# The DB is created automatically on first connection if the 'flows' table is missing.
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "taskr.db"
 SCHEMA_PATH = ROOT / "schema.sql"
@@ -96,7 +96,7 @@ class TaskrRepository:
     def _schema_exists(conn: sqlite3.Connection) -> bool:
         """Quick check: does the schema look already applied?"""
         row = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'goals'"
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'flows'"
         ).fetchone()
         return row is not None
 
@@ -117,21 +117,21 @@ class TaskrRepository:
         TaskrRepository.apply_schema()
 
     # ------------------------------------------------------------------
-    # Seed data for the demo goal
+    # Seed data for the demo flow
     # ------------------------------------------------------------------
     # This is temporary scaffolding: it creates a sample "Soda Comparison"
-    # goal so the MVP can be exercised without a goal-design UI. The sample
+    # flow so the MVP can be exercised without a flow-design UI. The sample
     # flow exercises API calls, a foreach loop, and Hermes question blocking.
 
     def seed_data(self) -> None:
-        """Insert the demo goal, flow version, bindings, and nodes if they do not exist."""
+        """Insert the demo flow, flow version, bindings, and nodes if they do not exist."""
         self.conn.execute(
-            "INSERT OR IGNORE INTO goals (id, title, slug, question) VALUES (?, ?, ?, ?)",
-            ("g-soda", "Soda Comparison", "soda-comparison", "Compare soda products"),
+            "INSERT OR IGNORE INTO flows (id, title, slug, question) VALUES (?, ?, ?, ?)",
+            ("flow-soda", "Soda Comparison", "soda-comparison", "Compare soda products"),
         )
         self.conn.execute(
-            "INSERT OR IGNORE INTO flow_versions (id, goal_id, version, status) VALUES (?, ?, ?, ?)",
-            ("fv-1", "g-soda", 1, "draft"),
+            "INSERT OR IGNORE INTO flow_versions (id, flow_id, version, status) VALUES (?, ?, ?, ?)",
+            ("fv-1", "flow-soda", 1, "draft"),
         )
 
         bindings = [
@@ -204,37 +204,37 @@ class TaskrRepository:
         self.conn.commit()
 
     # ------------------------------------------------------------------
-    # Goals, flow versions, and runs
+    # Flows, flow versions, and runs
     # ------------------------------------------------------------------
 
-    def load_all_goals(self) -> list[dict[str, Any]]:
-        """Return every goal in the system, ordered by title."""
-        return self._all("SELECT * FROM goals ORDER BY title, slug")
+    def load_all_flows(self) -> list[dict[str, Any]]:
+        """Return every flow in the system, ordered by title."""
+        return self._all("SELECT * FROM flows ORDER BY title, slug")
 
-    def load_goal_by_slug(self, slug: str) -> dict[str, Any] | None:
-        """Fetch a goal by its URL-friendly slug."""
-        return self._one("SELECT * FROM goals WHERE slug = ?", (slug,))
+    def load_flow_by_slug(self, slug: str) -> dict[str, Any] | None:
+        """Fetch a flow by its URL-friendly slug."""
+        return self._one("SELECT * FROM flows WHERE slug = ?", (slug,))
 
     def load_flow_version(self, flow_version_id: str) -> dict[str, Any] | None:
         """Fetch a single flow version by id."""
         return self._one("SELECT * FROM flow_versions WHERE id = ?", (flow_version_id,))
 
-    def load_active_flow_version(self, goal_id: str) -> dict[str, Any] | None:
-        """Fetch the currently active flow version for a goal."""
+    def load_active_flow_version(self, flow_id: str) -> dict[str, Any] | None:
+        """Fetch the currently active flow version for a flow."""
         return self._one(
-            "SELECT * FROM flow_versions WHERE goal_id = ? AND status = 'active' ORDER BY version DESC LIMIT 1",
-            (goal_id,),
+            "SELECT * FROM flow_versions WHERE flow_id = ? AND status = 'active' ORDER BY version DESC LIMIT 1",
+            (flow_id,),
         )
 
-    def create_run(self, goal_id: str, flow_version_id: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+    def create_run(self, flow_id: str, flow_version_id: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Create a new run and return it. Runs start with status 'running'."""
         run_id = f"run-{uuid.uuid4().hex[:12]}"
         self.conn.execute(
             """
-            INSERT INTO runs (id, goal_id, flow_version_id, status, context, started_at)
+            INSERT INTO runs (id, flow_id, flow_version_id, status, context, started_at)
             VALUES (?, ?, ?, 'running', ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             """,
-            (run_id, goal_id, flow_version_id, self._json(context or {})),
+            (run_id, flow_id, flow_version_id, self._json(context or {})),
         )
         self.conn.commit()
         return self.load_run(run_id)

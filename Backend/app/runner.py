@@ -10,7 +10,7 @@ from app.mapping import resolve_mapping, resolve_output_mapping, resolve_path
 # TaskrRunner — core workflow execution engine
 # =============================================================================
 #
-# A run is a single execution of a goal's active flow version.  Each top-level
+# A run is a single execution of a flow's active flow version.  Each top-level
 # node in the flow gets a persisted ``node_state`` record.  The runner advances
 # a run one logical step at a time via ``tick()``.  It is otherwise stateless:
 # all state lives in the repository, and the runner re-reads it on every call.
@@ -42,7 +42,7 @@ class TaskrRunner:
     Attributes
     ----------
     repo
-        Persistence layer for goals, flow versions, runs, node_states, loop
+        Persistence layer for flows, flow versions, runs, node_states, loop
         states, questions, and bindings.
     api
         Integration client for API-backed bindings.  Must provide ``start()``
@@ -73,21 +73,21 @@ class TaskrRunner:
     # Run lifecycle
     # ------------------------------------------------------------------
 
-    def create_run(self, goal_slug: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Create a new run for ``goal_slug`` and materialize its node_states.
+    def create_run(self, flow_slug: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Create a new run for ``flow_slug`` and materialize its node_states.
 
         Steps:
-        1. Load the goal by slug; if it does not exist, seed initial data and
+        1. Load the flow by slug; if it does not exist, seed initial data and
            try again.
-        2. Load the active flow version for the resolved goal.
-        3. Persist a run record bound to the goal and flow version.
+        2. Load the active flow version for the resolved flow.
+        3. Persist a run record bound to the flow and flow version.
         4. Create a ``node_state`` for every top-level node in the flow so
            the run has a concrete state to advance from.
 
         Parameters
         ----------
-        goal_slug : str
-            Human-readable slug that identifies the goal to run.
+        flow_slug : str
+            Human-readable slug that identifies the flow to run.
         context : dict[str, Any] | None, optional
             Optional key/value context injected into the run and available to
             mappings as ``$scope``.
@@ -100,24 +100,24 @@ class TaskrRunner:
         Raises
         ------
         ValueError
-            If the goal slug cannot be resolved or the goal has no active flow
+            If the flow slug cannot be resolved or the flow has no active flow
             version.
         """
-        # Resolve the goal.  Seeding is a fallback for empty dev/test DBs.
-        goal = self.repo.load_goal_by_slug(goal_slug)
-        if goal is None:
+        # Resolve the flow.  Seeding is a fallback for empty dev/test DBs.
+        flow = self.repo.load_flow_by_slug(flow_slug)
+        if flow is None:
             self.repo.seed_data()
-            goal = self.repo.load_goal_by_slug(goal_slug)
-        if not goal:
-            raise ValueError(f"unknown goal slug: {goal_slug}")
+            flow = self.repo.load_flow_by_slug(flow_slug)
+        if not flow:
+            raise ValueError(f"unknown flow slug: {flow_slug}")
 
-        # A goal must have an active flow version before it can be executed.
-        flow_version = self.repo.load_active_flow_version(goal["id"])
+        # A flow must have an active flow version before it can be executed.
+        flow_version = self.repo.load_active_flow_version(flow["id"])
         if not flow_version:
-            raise ValueError(f"no active flow version for goal: {goal['id']}")
+            raise ValueError(f"no active flow version for flow: {flow['id']}")
 
-        # Persist the run and bind it to the resolved goal/flow version.
-        run = self.repo.create_run(goal["id"], flow_version["id"], context or {})
+        # Persist the run and bind it to the resolved flow/flow version.
+        run = self.repo.create_run(flow["id"], flow_version["id"], context or {})
 
         # Materialize node_states for every top-level node.  Child nodes of
         # foreach loops are created lazily when their iteration is advanced.
