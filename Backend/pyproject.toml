@@ -1,0 +1,24 @@
+[project]
+name = "taskr"
+version = "0.1.0"
+description = "Taskr MVP backend"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "pydantic",
+  "httpx",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app", "app.*", "tests", "tests.*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
