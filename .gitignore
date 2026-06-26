@@ -1,0 +1,39 @@
+# Taskr backend
+Backend/__pycache__/
+Backend/*.db
+Backend/*.db-shm
+Backend/*.db-wal
+Backend/.venv/
+Backend/.pytest_cache/
+Backend/.hypothesis/
+Backend/*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Runtime
+*.db
+*.db-shm
+*.db-wal
+.venv/
+
+# Testing
+.pytest_cache/
+.hypothesis/
+
+# IDE
+.vscode/
+.idea/
+
+# Legacy / planning artifacts
+new/
+NOTES.md
+requirements.txt
+taskr_frontend_plan_v3.md
+taskr_hermes_architecture.md
+.hermes/plans/
