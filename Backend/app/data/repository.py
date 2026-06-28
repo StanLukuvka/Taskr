@@ -476,3 +476,82 @@ class TaskrRepository:
         )
         self.conn.commit()
         return self.load_node_state(state["node_state_id"])
+
+    # ── Loop state & iterations ──────────────────────────────────────────────────
+
+    def get_loop_state(self, node_state_id: str) -> dict[str, Any] | None:
+        """Fetch the loop_state for a given foreach node_state, or None.
+
+        A foreach node has one loop_state per node_state, and one loop_iteration
+        per item. The loop_state tracks initialization/snapshot timing; the
+        iterations track the per-item child executions.
+        """
+        row = self.conn.execute("SELECT * FROM LOOP_STATE WHERE fk_node_state_id = ?", (node_state_id,)).fetchone()
+        return self._row_to_dict(row, "LOOP_STATE") if row else None
+
+    def create_loop_state(self, node_state_id: str) -> dict[str, Any]:
+        """Create a fresh loop_state for a foreach node_state."""
+        loop_state_id = f"ls-{uuid.uuid4().hex[:12]}"
+        self.conn.execute(
+            "INSERT INTO LOOP_STATE (loop_state_id, fk_node_state_id) VALUES (?, ?)",
+            (loop_state_id, node_state_id),
+        )
+        self.conn.commit()
+        return self.get_loop_state(node_state_id)
+
+    def save_loop_state(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Persist timing/metadata on a loop_state."""
+        self.conn.execute(
+            """
+            UPDATE LOOP_STATE
+            SET initialized_at = ?, snapshot_completed_at = ?, snapshot_metadata = ?
+            WHERE loop_state_id = ?
+            """,
+            (
+                state.get("initialized_at"),
+                state.get("snapshot_completed_at"),
+                self._json(state.get("snapshot_metadata")),
+                state["loop_state_id"],
+            ),
+        )
+        self.conn.commit()
+        return self.get_loop_state(state["fk_node_state_id"])
+
+    def create_loop_iteration(self, loop_state_id: str, iteration_key: str, position: int, item: dict[str, Any]) -> dict[str, Any]:
+        """Create one iteration row for a foreach loop."""
+        iteration_id = f"li-{uuid.uuid4().hex[:12]}"
+        self.conn.execute(
+            """
+            INSERT INTO LOOP_ITERATION (loop_iteration_id, fk_loop_state_id, iteration_key, position, item, status)
+            VALUES (?, ?, ?, ?, ?, 'pending')
+            """,
+            (iteration_id, loop_state_id, iteration_key, position, self._json(item)),
+        )
+        self.conn.commit()
+        return self.load_loop_iteration(iteration_id)
+
+    def load_loop_iteration(self, iteration_id: str) -> dict[str, Any] | None:
+        """Fetch a single loop iteration by id."""
+        row = self.conn.execute("SELECT * FROM LOOP_ITERATION WHERE loop_iteration_id = ?", (iteration_id,)).fetchone()
+        return self._row_to_dict(row, "LOOP_ITERATION") if row else None
+
+    def load_loop_iterations(self, loop_state_id: str) -> list[dict[str, Any]]:
+        """Return all iterations for a loop_state, ordered by position."""
+        rows = self.conn.execute(
+            "SELECT * FROM LOOP_ITERATION WHERE fk_loop_state_id = ? ORDER BY position, loop_iteration_id",
+            (loop_state_id,),
+        ).fetchall()
+        return [self._row_to_dict(row, "LOOP_ITERATION") for row in rows]
+
+    def save_loop_iteration(self, iteration: dict[str, Any]) -> dict[str, Any]:
+        """Persist status/output on a loop iteration."""
+        self.conn.execute(
+            """
+            UPDATE LOOP_ITERATION
+            SET status = ?, output = ?, error_summary = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE loop_iteration_id = ?
+            """,
+            (iteration["status"], self._json(iteration.get("output")), iteration.get("error_summary"), iteration["loop_iteration_id"]),
+        )
+        self.conn.commit()
+        return self.load_loop_iteration(iteration["loop_iteration_id"])
