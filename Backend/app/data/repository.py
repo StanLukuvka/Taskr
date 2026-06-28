@@ -371,6 +371,34 @@ class TaskrRepository:
 
     # ── Binding management ──────────────────────────────────────────────────
 
+    def load_all_bindings(self) -> list[dict[str, Any]]:
+        """Return every binding joined with its kind-specific config row.
+
+        Uses LEFT JOIN to both child tables. The row_factory exposes the joined
+        columns; because the schema and triggers guarantee a child row exists for
+        every valid binding, the builder can safely read required kind-specific fields.
+        """
+        sql = """
+        SELECT ib.*,
+               abc.method AS method, abc.url_template AS url_template,
+               abc.auth_ref AS auth_ref, abc.headers AS headers,
+               abc.request_mode AS request_mode, abc.completion_mode AS completion_mode,
+               abc.external_ref_path AS external_ref_path, abc.status_method AS status_method,
+               abc.status_url_template AS status_url_template, abc.status_path AS status_path,
+               abc.success_values AS success_values, abc.failure_values AS failure_values,
+               abc.result_path AS result_path,
+               hbc.board AS board, hbc.profile AS profile,
+               hbc.task_title_template AS task_title_template, hbc.task_body_template AS task_body_template,
+               hbc.skills AS skills, hbc.tenant_template AS tenant_template,
+               hbc.workspace_template AS workspace_template, hbc.goal_mode AS goal_mode
+        FROM INTEGRATION_BINDING ib
+        LEFT JOIN API_BINDING_CONFIG abc ON abc.fk_binding_id = ib.binding_id
+        LEFT JOIN HERMES_BINDING_CONFIG hbc ON hbc.fk_binding_id = ib.binding_id
+        ORDER BY ib.display_title, ib.binding_id
+        """
+        rows = self.conn.execute(sql).fetchall()
+        return [self._row_to_dict(row, "INTEGRATION_BINDING") for row in rows]
+
     def load_binding(self, binding_id: str) -> dict[str, Any] | None:
         """Fetch a binding plus its kind-specific configuration.
 
