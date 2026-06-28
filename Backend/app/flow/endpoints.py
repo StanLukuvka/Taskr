@@ -134,3 +134,46 @@ def update_flow_node(node_id: str, body: FlowNodeUpdateRequest):
 
     updates = body.model_dump(exclude_none=True)
     return repo.update_flow_node(node_id, updates)
+
+
+@router.delete("/flow_nodes/{node_id}", tags=["Flow Nodes"])
+def delete_flow_node(node_id: str):
+    """Delete a flow node and its children.
+
+    The flow version must be in draft status.
+
+    Args:
+        node_id: The ID of the flow node to delete.
+
+    Returns:
+        A confirmation message.
+
+    Raises:
+        FlowNodeNotFoundError: 404 if the node does not exist.
+        FlowVersionNotFoundError: 404 if the flow version does not exist.
+        FlowVersionNotDraftError: 400 if the flow version is not draft.
+    """
+    repo = _get_repo()
+    node = repo.load_flow_node(node_id)
+
+    #USER: Theoretically if version is incremented and not a random UUID a USER can delete the id twice, even if a flow was newly created
+
+    if node is None:
+        raise FlowNodeNotFoundError(f"Flow node {node_id} not found", entity_id=node_id)
+
+    version = repo._one(
+        "SELECT * FROM FLOW_VERSION WHERE flow_version_id = ?", (node["fk_flow_version_id"],)
+    )
+    if version is None:
+        raise FlowVersionNotFoundError(
+            f"Flow version {node['fk_flow_version_id']} not found",
+            entity_id=node["fk_flow_version_id"],
+        )
+    if version["status"] != "draft":
+        raise FlowVersionNotDraftError(
+            f"Flow version {node['fk_flow_version_id']} is not in draft status",
+            entity_id=node["fk_flow_version_id"],
+        )
+
+    repo.delete_flow_node(node_id)
+    return {"status": "deleted", "node_id": node_id}
