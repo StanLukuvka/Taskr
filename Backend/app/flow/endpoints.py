@@ -229,3 +229,41 @@ def create_flow_version(flow_id: str):
         raise FlowNotFoundError(f"Flow {flow_id} not found", entity_id=flow_id)
     return repo.create_flow_version(flow_id)
 
+@router.get("/flows", response_model=list[FlowResponse], tags=["Flows"])
+def list_flows():
+    """List all flows.
+
+    Returns:
+        A list of FlowResponse records.
+    """
+    repo = _get_repo()
+    repo.seed_data()
+    flows = repo.load_all_flows()
+    return [build_flow_response(f) for f in flows]
+
+
+@router.get(
+    "/flow_versions/{flow_version_id}",
+    response_model=FlowVersionResponse,
+    tags=["Flow Versions"],
+)
+def get_flow_version(flow_version_id: str):
+    """Retrieve a flow version and its full node tree.
+
+    Args:
+        flow_version_id: The ID of the flow version.
+
+    Returns:
+        A FlowVersionResponse containing the version metadata and nested nodes.
+
+    Raises:
+        FlowVersionNotFoundError: 404 if the flow version does not exist.
+    """
+    repo = _get_repo()
+    version = repo.load_flow_version(flow_version_id)
+    if version is None:
+        raise FlowVersionNotFoundError(
+            f"Flow version {flow_version_id} not found",
+            entity_id=flow_version_id,
+        )
+    return build_flow_version_response(version, repo)
