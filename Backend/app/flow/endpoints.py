@@ -229,6 +229,31 @@ def create_flow_version(flow_id: str):
         raise FlowNotFoundError(f"Flow {flow_id} not found", entity_id=flow_id)
     return repo.create_flow_version(flow_id)
 
+
+@router.post(
+    "/flow_versions/{flow_version_id}/publish",
+    response_model=FlowVersionCreateResponse,
+    tags=["Flow Versions"],
+)
+def publish_flow_version(flow_version_id: str):
+    """Publish a draft flow version, making it the active version.
+
+    Any previously active version for the same flow is archived.
+
+    Args:
+        flow_version_id: The ID of the draft flow version to publish.
+
+    Returns:
+        The updated flow version record with status "active".
+
+    Raises:
+        FlowVersionNotFoundError: 404 if the version does not exist.
+        FlowVersionNotDraftError: 400 if it is not in draft status.
+    """
+    repo = _get_repo()
+    return repo.publish_flow_version(flow_version_id)
+
+
 @router.get("/flows", response_model=list[FlowResponse], tags=["Flows"])
 def list_flows():
     """List all flows.
