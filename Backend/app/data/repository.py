@@ -583,6 +583,19 @@ class TaskrRepository:
         assert binding is not None
         return binding
 
+    def delete_binding(self, binding_id: str) -> None:
+        """Delete a binding and cascade to its child config row."""
+        self.conn.execute("DELETE FROM INTEGRATION_BINDING WHERE binding_id = ?", (binding_id,))
+        self.conn.commit()
+
+    def binding_is_in_use(self, binding_id: str) -> bool:
+        """Return True if any FLOW_NODE references this binding."""
+        row = self.conn.execute(
+            "SELECT 1 FROM FLOW_NODE WHERE fk_binding_id = ? LIMIT 1",
+            (binding_id,),
+        ).fetchone()
+        return row is not None
+
     def get_or_create_node_state(self, run_id: str, node_id: str, loop_iteration_id: str | None) -> dict[str, Any]:
         """Find the node_state for this (run, node, iteration), or create a pending one.
 
