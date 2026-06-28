@@ -58,6 +58,250 @@
         }
       }
     },
+    "/flow_nodes/{node_id}": {
+      "patch": {
+        "tags": [
+          "Flow Nodes"
+        ],
+        "summary": "Update Flow Node",
+        "description": "Update an existing flow node.\n\nOnly fields provided in the body are updated. The flow version must be\nin draft status; published or archived versions are immutable.\n\nArgs:\n    node_id: The ID of the flow node to update.\n    body: The update payload containing only fields to change.\n\nReturns:\n    The updated flow node record.\n\nRaises:\n    HTTPException: 404 if the node does not exist, 400 if its flow\n        version is not in draft status.",
+        "operationId": "update_flow_node_flow_nodes__node_id__patch",
+        "parameters": [
+          {
+            "name": "node_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowNodeUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Flow Nodes"
+        ],
+        "summary": "Delete Flow Node",
+        "description": "Delete a flow node and its children.\n\nThe flow version must be in draft status.\n\nArgs:\n    node_id: The ID of the flow node to delete.\n\nReturns:\n    A confirmation message.\n\nRaises:\n    HTTPException: 404 if the node does not exist, 400 if its flow\n        version is not in draft status.",
+        "operationId": "delete_flow_node_flow_nodes__node_id__delete",
+        "parameters": [
+          {
+            "name": "node_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows": {
+      "get": {
+        "tags": [
+          "Flows"
+        ],
+        "summary": "List Flows",
+        "description": "List all flows.\n\nReturns:\n    A list of FlowResponse records.",
+        "operationId": "list_flows_flows_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FlowResponse"
+                  },
+                  "type": "array",
+                  "title": "Response List Flows Flows Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Flows"
+        ],
+        "summary": "Create Flow",
+        "description": "Create a new flow.\n\nArgs:\n    body: The flow creation payload.\n\nReturns:\n    The newly created flow record.\n\nRaises:\n    HTTPException: 400 if the slug is already in use.",
+        "operationId": "create_flow_flows_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FlowCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowResponseFull"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flows/{flow_id}/versions": {
+      "post": {
+        "tags": [
+          "Flow Versions"
+        ],
+        "summary": "Create Flow Version",
+        "description": "Create a new draft flow version for a flow.\n\nThe version number is auto-incremented. The new version starts in draft\nstatus so nodes can be added before publishing.\n\nArgs:\n    flow_id: The ID of the flow to create a version for.\n\nReturns:\n    The newly created flow version record.\n\nRaises:\n    HTTPException: 404 if the flow does not exist.",
+        "operationId": "create_flow_version_flows__flow_id__versions_post",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Flow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowVersionCreateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flow_versions/{flow_version_id}/publish": {
+      "post": {
+        "tags": [
+          "Flow Versions"
+        ],
+        "summary": "Publish Flow Version",
+        "description": "Publish a draft flow version, making it the active version.\n\nAny previously active version for the same flow is archived.\n\nArgs:\n    flow_version_id: The ID of the draft flow version to publish.\n\nReturns:\n    The updated flow version record with status \"active\".\n\nRaises:\n    HTTPException: 404 if the version does not exist, 400 if it is\n        not in draft status.",
+        "operationId": "publish_flow_version_flow_versions__flow_version_id__publish_post",
+        "parameters": [
+          {
+            "name": "flow_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Flow Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowVersionCreateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/runs": {
       "get": {
         "tags": [
@@ -124,32 +368,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/flows": {
-      "get": {
-        "tags": [
-          "Flows"
-        ],
-        "summary": "List Flows",
-        "description": "List all flows.\n\nReturns:\n    A list of FlowResponse records.",
-        "operationId": "list_flows_flows_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/FlowResponse"
-                  },
-                  "type": "array",
-                  "title": "Response List Flows Flows Get"
                 }
               }
             }
@@ -298,6 +516,133 @@
         "summary": "Get Run",
         "description": "Retrieve a single run by ID.\n\nArgs:\n    run_id: The ID of the run to retrieve.\n\nReturns:\n    A RunResponse containing the run metadata and node states.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
         "operationId": "get_run_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Delete Run",
+        "description": "Delete a run and all its child records.\n\nArgs:\n    run_id: The ID of the run to delete.\n\nReturns:\n    A RunActionResponse with status \"deleted\".\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
+        "operationId": "delete_run_runs__run_id__delete",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Cancel Run",
+        "description": "Cancel a run.\n\nMarks the run and all non-terminal node_states as cancelled. In-flight\ncalls to external APIs are not interrupted; cancellation is a local state\nchange that prevents future ticks from advancing the run.\n\nArgs:\n    run_id: The ID of the run to cancel.\n\nReturns:\n    A RunActionResponse with status \"cancelled\".\n\nRaises:\n    HTTPException: 404 if the run does not exist, 400 if it is already\n        terminal.",
+        "operationId": "cancel_run_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunActionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/runs/{run_id}/retry": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Retry Run",
+        "description": "Retry a run by creating a fresh run from the same flow and context.\n\nThe original run is left unchanged. The new run is created from the same\nflow version and initial context as the original.\n\nArgs:\n    run_id: The ID of the run to retry.\n\nReturns:\n    A RunResponse for the newly created run.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
+        "operationId": "retry_run_runs__run_id__retry_post",
         "parameters": [
           {
             "name": "run_id",
@@ -597,6 +942,30 @@
         "title": "CreateRunRequest",
         "description": "Payload used to create a new run.\n\nAttributes:\n    flow_slug: The flow to execute. Defaults to the seeded demo flow.\n    context: Optional initial context for the run."
       },
+      "FlowCreateRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "slug",
+          "question"
+        ],
+        "title": "FlowCreateRequest",
+        "description": "Payload used to create a new flow.\n\nAttributes:\n    title: Human-readable title for the flow.\n    slug: URL-friendly unique slug.\n    question: The question this flow answers."
+      },
       "FlowNodeCreateRequest": {
         "properties": {
           "kind": {
@@ -668,11 +1037,40 @@
             ],
             "title": "Output Mapping"
           },
+          "items_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Path"
+          },
+          "item_key_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Key Path"
+          },
+          "failure_policy": {
+            "type": "string",
+            "title": "Failure Policy",
+            "default": "stop"
+          },
           "policy_refs": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
@@ -688,7 +1086,7 @@
           "title"
         ],
         "title": "FlowNodeCreateRequest",
-        "description": "Payload used to create a new node inside a flow version.\n\nAttributes:\n    kind: The node type (e.g., \"question\", \"action\").\n    ord: The display / execution order of the node within the flow.\n    title: Human-readable title for the node.\n    node_id: Optional stable identifier for the node.\n    parent_node_id: Optional identifier of a parent node, for nesting.\n    binding_id: Optional binding reference for external integrations.\n    input_mapping: Optional mapping of input fields for this node.\n    output_mapping: Optional mapping of output fields for this node.\n    policy_refs: Optional policy references attached to the node."
+        "description": "Payload used to create a new node inside a flow version.\n\nAttributes:\n    kind: The node type (e.g., \"api\", \"hermes\", \"foreach\").\n    ord: The display / execution order of the node within the flow.\n    title: Human-readable title for the node.\n    node_id: Optional stable identifier for the node.\n    parent_node_id: Optional identifier of a parent node, for nesting.\n    binding_id: Optional binding reference for external integrations.\n    input_mapping: Optional mapping of input fields for this node.\n    output_mapping: Optional mapping of output fields for this node.\n    items_path: Optional path to the items list (foreach only).\n    item_key_path: Optional path to the unique key within each item (foreach only).\n    failure_policy: Optional failure policy (\"stop\" or \"continue\").\n    policy_refs: Optional policy references attached to the node."
       },
       "FlowNodeResponse": {
         "properties": {
@@ -777,6 +1175,115 @@
         "title": "FlowNodeResponse",
         "description": "Public representation of a flow node, including children.\n\nAttributes:\n    id: Node identifier.\n    kind: Node kind (\"api\", \"hermes\", \"foreach\").\n    ord: Sibling order.\n    title: Display title.\n    parent_node_id: Parent identifier, if any.\n    binding_id: Integration binding, if any.\n    input_mapping: Mapping used to build node input.\n    output_mapping: Mapping used to write node output.\n    items_path: For foreach nodes, the path to the list being iterated.\n    failure_policy: How failures are handled.\n    children: Nested child nodes for foreach containers."
       },
+      "FlowNodeUpdateRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "ord": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ord"
+          },
+          "binding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Id"
+          },
+          "input_mapping": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Mapping"
+          },
+          "output_mapping": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Mapping"
+          },
+          "items_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Path"
+          },
+          "item_key_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Key Path"
+          },
+          "failure_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Policy"
+          },
+          "policy_refs": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Refs"
+          }
+        },
+        "type": "object",
+        "title": "FlowNodeUpdateRequest",
+        "description": "Payload used to update an existing flow node.\n\nAll fields are optional; only provided fields are updated.\n\nAttributes:\n    title: New title for the node.\n    ord: New display / execution order.\n    binding_id: New binding reference.\n    input_mapping: New input mapping.\n    output_mapping: New output mapping.\n    items_path: New items path (foreach only).\n    item_key_path: New item key path (foreach only).\n    failure_policy: New failure policy (\"stop\" or \"continue\").\n    policy_refs: New policy references."
+      },
       "FlowResponse": {
         "properties": {
           "id": {
@@ -805,6 +1312,86 @@
         ],
         "title": "FlowResponse",
         "description": "Public representation of a flow.\n\nAttributes:\n    id: Unique identifier for the flow.\n    title: Human-readable title.\n    slug: URL-friendly identifier.\n    question: One-line summary of what the flow answers."
+      },
+      "FlowResponseFull": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug",
+          "question"
+        ],
+        "title": "FlowResponseFull",
+        "description": "Full representation of a flow including its versions.\n\nAttributes:\n    id: Unique flow identifier.\n    title: Human-readable title.\n    slug: URL-friendly slug.\n    question: The question this flow answers.\n    created_at: Creation timestamp.\n    updated_at: Last update timestamp."
+      },
+      "FlowVersionCreateResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "flow_id": {
+            "type": "string",
+            "title": "Flow Id"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "flow_id",
+          "version",
+          "status"
+        ],
+        "title": "FlowVersionCreateResponse",
+        "description": "Response after creating a flow version.\n\nAttributes:\n    id: Flow version identifier.\n    flow_id: Parent flow identifier.\n    version: Version number.\n    status: Version status (\"draft\", \"active\", \"archived\")."
       },
       "FlowVersionResponse": {
         "properties": {
@@ -1095,6 +1682,31 @@
         ],
         "title": "QuestionResponse",
         "description": "Public representation of a question raised during node execution.\n\nAttributes:\n    id: Unique identifier for the question.\n    node_state_id: Identifier of the node state that raised the question.\n    prompt: Text prompt shown to the user.\n    options: Optional list of selectable options or structured choices.\n    status: Current status of the question (e.g., \"open\", \"answered\").\n    created_at: ISO timestamp when the question was created."
+      },
+      "RunActionResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "RunActionResponse",
+        "description": "Response returned after a run-level action such as cancel or retry."
       },
       "RunListItem": {
         "properties": {
