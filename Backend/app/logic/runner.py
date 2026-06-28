@@ -1,0 +1,791 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from app.logic.mapping import resolve_mapping, resolve_output_mapping, resolve_path
+from app.errors.data import FlowVersionNotFoundError
+from app.errors.logic import (
+    FlowNotFoundError,
+    FlowNodeNotFoundError,
+    MissingFlowForRunError,
+    MissingNodeStateForQuestionError,
+    MissingRunForQuestionError,
+    NoActiveFlowVersionError,
+    NodeStateNotFoundError,
+    NodeStateRetryError,
+    QuestionNotFoundError,
+    RunAlreadyTerminalError,
+    RunNotFoundError,
+    RunRestartTargetError,
+)
+
+"""TaskrRunner — core workflow execution engine.
+
+A run is a single execution of a flow's active flow version.  Each top-level
+node in the flow gets a persisted ``node_state`` record.  The runner advances
+a run one logical step at a time via ``tick()``.  It is otherwise stateless:
+all state lives in the repository, and the runner re-reads it on every call.
+
+Supported node kinds at the top level:
+  * ``action`` — a single unit of work backed by a binding (API or Hermes).
+  * ``foreach`` — a loop that creates per-item iterations and runs child
+    action nodes for each item.
+
+Key invariants maintained by this module:
+  * A node_state is dispatched at most once.  Dispatch is recorded by
+    incrementing ``attempt`` and moving the status to ``running``.
+  * A run is paused while any of its node_states are blocked on a question.
+  * Completed outputs are written back via ``output_mapping`` so downstream
+    nodes can read them as ``$nodes.<node_id>.output``.
+  * Failure in any node fails the whole run.
+"""
+
+
+class TaskrRunner:
+    """The core state machine for executing Taskr workflow runs.
+
+    The runner is responsible for creating runs, advancing them one logical
+    step at a time (a "tick"), and integrating results returned by external
+    systems (APIs or Hermes tasks).  It is designed to be stateless with
+    respect to run data: the injected ``repo`` is the source of truth and is
+    read from/written to on every transition.
+
+    Attributes
+    ----------
+    repo
+        Persistence layer for flows, flow versions, runs, node_states, loop
+        states, questions, and bindings.
+    api
+        Integration client for API-backed bindings.  Must provide ``start()``
+        and ``inspect(external_ref)``.
+    hermes
+        Integration client for Hermes-backed bindings.  Must provide
+        ``create_task(input)``, ``inspect_task(ref_or_id)``, and
+        ``answer_question(hermes_task_id, answer)``.
+    """
+
+    # ── Initialization ──────────────────────────────────────────
+
+    def __init__(self, repo, api_caller, hermes_service):
+        """Initialize the runner with its persistence and integration services.
+
+        Parameters
+        ----------
+        repo
+            Repository instance used for all state persistence.
+        api_caller
+            Client responsible for API-style node bindings.
+        hermes_service
+            Client responsible for Hermes-style node bindings.
+        """
+        self.repo = repo
+        self.api = api_caller
+        self.hermes = hermes_service
+
+    # ── Run creation ──────────────────────────────────────────
+
+    def create_run(
+        self,
+        flow_slug: str | None = None,
+        context: dict[str, Any] | None = None,
+        *,
+        flow_version_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a new run for a flow or flow version and materialize its node_states.
+
+        Steps:
+        1. If ``flow_version_id`` is provided, load that exact version and its
+           parent flow. If ``flow_version_id`` is absent, load the flow by slug,
+           seed initial data if needed, and then resolve its active version.
+        2. Persist a run record bound to the flow and flow version.
+        3. Create a ``node_state`` for every top-level node in the flow so
+           the run has a concrete state to advance from.
+
+        Parameters
+        ----------
+        flow_slug : str | None, optional
+            Human-readable slug that identifies the flow to run. Defaults to
+            ``"soda-comparison"`` when neither this nor ``flow_version_id`` is
+            provided.
+        flow_version_id : str | None, optional
+            Exact flow version to execute. If provided, ``flow_slug`` is ignored.
+        context : dict[str, Any] | None, optional
+            Optional key/value context injected into the run and available to
+            mappings as ``$scope``.
+
+        Returns
+        -------
+        dict[str, Any]
+            The newly created run record.
+
+        Raises
+        ------
+        FlowVersionNotFoundError
+            If ``flow_version_id`` is provided but cannot be found.
+        FlowNotFoundError
+            If the flow slug cannot be resolved or the version's parent flow is
+            missing.
+        NoActiveFlowVersionError
+            If the resolved flow has no active flow version (slug path only).
+        """
+        context = context or {}
+
+        if flow_version_id is not None:
+            flow_version = self.repo.load_flow_version(flow_version_id)
+            if not flow_version:
+                raise FlowVersionNotFoundError(f"unknown flow version: {flow_version_id}", entity_id=flow_version_id)
+            flow = self.repo.load_flow(flow_version["fk_flow_id"])
+            if not flow:
+                raise FlowNotFoundError(
+                    f"missing flow for version: {flow_version_id}",
+                    entity_id=flow_version["fk_flow_id"],
+                )
+        else:
+            resolved_slug = flow_slug if flow_slug is not None else "soda-comparison"
+            flow = self.repo.load_flow_by_slug(resolved_slug)
+            if flow is None:
+                self.repo.seed_data()
+                flow = self.repo.load_flow_by_slug(resolved_slug)
+            if not flow:
+                raise FlowNotFoundError(f"unknown flow slug: {resolved_slug}", entity_id=resolved_slug)
+            flow_version = self.repo.load_active_flow_version(flow["flow_id"])
+            if not flow_version:
+                raise NoActiveFlowVersionError(entity_id=flow["flow_id"])
+
+        run = self.repo.create_run(flow["flow_id"], flow_version["flow_version_id"], context)
+
+        for node in self.repo.load_top_level_nodes(flow_version["flow_version_id"]):
+            self.repo.get_or_create_node_state(run["run_id"], node["flow_node_id"], None)
+
+        return run
+
+    # ── Run advancement ──────────────────────────────────────────
+
+    def tick(self, run_id: str | None = None) -> list[str]:
+        """Advance active runs by one logical step.
+
+        If ``run_id`` is provided, only that run is advanced (if it exists and
+        is in a runnable status).  Otherwise every run whose status is
+        ``running`` or ``paused`` is advanced once.
+
+        Parameters
+        ----------
+        run_id : str | None, optional
+            Optional run id to tick.  If omitted, all active runs are ticked.
+
+        Returns
+        -------
+        list[str]
+            The ids of the runs that were advanced.  Empty if no run matched
+            or the targeted run was not active.
+        """
+        if run_id is not None:
+            run = self.repo.load_run(run_id)
+            if not run:
+                raise RunNotFoundError(f"unknown run id: {run_id}", entity_id=run_id)
+            if run["status"] not in {"running", "paused"}:
+                return []
+            self.advance_run(run)
+            return [run_id]
+
+        runs = self.repo.list_runs(["running", "paused"])
+        results = []
+        for run in runs:
+            self.advance_run(run)
+            results.append(run["run_id"])
+        return results
+
+    def advance_run(self, run: dict[str, Any]) -> None:
+        """Advance a single run by evaluating its top-level nodes.
+
+        The runner processes top-level nodes in flow order.  If any node
+        reports ``blocked`` the run is paused and advancement stops
+        immediately.  If any node is still in progress, the run remains
+        ``running`` and the loop breaks after the first non-completed node to
+        avoid advancing later nodes before their dependencies finish.  Once all
+        top-level nodes are completed, the run itself is marked completed.
+
+        Parameters
+        ----------
+        run : dict[str, Any]
+            The run record to advance.  May be mutated and re-persisted.
+        """
+        if run["status"] == "paused" and self.repo.load_open_questions(run["run_id"]):
+            return
+
+        if run["status"] == "paused":
+            run["status"] = "running"
+            run["pause_reason"] = None
+            run = self.repo.save_run(run)
+
+        all_completed = True
+        for node in self.repo.load_top_level_nodes(run["fk_flow_version_id"]):
+            state = self.repo.get_or_create_node_state(run["run_id"], node["flow_node_id"], None)
+            if state["status"] == "completed":
+                continue
+
+            if node["kind"] == "foreach":
+                status = self.advance_foreach(run, node, state)
+            else:
+                status = self.advance_action(run, node, state)
+
+            if status == "blocked":
+                return
+
+            if status != "completed":
+                all_completed = False
+                break
+
+        if all_completed:
+            run = self.repo.load_run(run["run_id"])
+            run["status"] = "completed"
+            run["pause_reason"] = None
+            run["finished_at"] = self._now()
+            self.repo.save_run(run)
+
+    # ── Foreach loop execution ──────────────────────────────────────────
+
+    def advance_foreach(
+        self,
+        run: dict[str, Any],
+        node: dict[str, Any],
+        state: dict[str, Any],
+    ) -> str:
+        """Advance a ``foreach`` node by iterating over its items.
+
+        On first dispatch the node resolves its ``items_path`` against the
+        runtime context and creates a ``loop_state`` plus one
+        ``loop_iteration`` record per item.  The runner then walks iterations
+        in order and advances each child action node within the iteration.  If
+        an iteration is blocked, the whole foreach node is blocked.
+
+        Completed outputs from child nodes are collected into the iteration's
+        ``output`` so the parent node's final output can aggregate per-item
+        results.
+
+        Parameters
+        ----------
+        run : dict[str, Any]
+            The run record.
+        node : dict[str, Any]
+            The foreach node definition.
+        state : dict[str, Any]
+            The node_state for this foreach node.
+
+        Returns
+        -------
+        str
+            The resulting status of the foreach node (e.g. ``completed``,
+            ``blocked``, ``running``).
+        """
+        if state["status"] == "completed":
+            return "completed"
+
+        if state["status"] in {"pending", "ready"}:
+            loop_state = self.repo.get_loop_state(state["node_state_id"])
+            if loop_state is None:
+                loop_state = self.repo.create_loop_state(state["node_state_id"])
+
+                items = resolve_path(node["items_path"], context=self._runtime_context(run)) or []
+
+                for position, item in enumerate(items):
+                    iteration_key = item.get("id") if isinstance(item, dict) and item.get("id") else str(position)
+                    self.repo.create_loop_iteration(loop_state["loop_state_id"], iteration_key, position, item)
+
+                loop_state = self.repo.get_loop_state(state["node_state_id"])
+
+            state["status"] = "running"
+            state["started_at"] = state.get("started_at") or self._now()
+            self.repo.save_node_state(state)
+
+        loop_state = self.repo.get_loop_state(state["node_state_id"])
+        child_nodes = self.repo.load_child_nodes(node["flow_node_id"])
+
+        for iteration in self.repo.load_loop_iterations(loop_state["loop_state_id"]):
+            if iteration["status"] == "completed":
+                continue
+
+            iteration_status = "completed"
+
+            collected_output: dict[str, Any] = {}
+
+            for child in child_nodes:
+                child_state = self.repo.get_or_create_node_state(
+                    run["run_id"], child["flow_node_id"], iteration["loop_iteration_id"]
+                )
+
+                child_status = self.advance_action(run, child, child_state, item=iteration["item"])
+
+                child_state = self.repo.load_node_state(child_state["node_state_id"])
+                if child_state and child_state.get("output") is not None:
+                    collected_output[child["flow_node_id"]] = child_state["output"]
+
+                if child_status == "blocked":
+                    iteration_status = "blocked"
+                    break
+
+                if child_status != "completed":
+                    iteration_status = child_status
+                    break
+
+            iteration["status"] = iteration_status
+            if collected_output:
+                iteration["output"] = collected_output
+            self.repo.save_loop_iteration(iteration)
+
+            if iteration_status == "blocked":
+                state["status"] = "blocked"
+                self.repo.save_node_state(state)
+                return "blocked"
+
+            if iteration_status != "completed":
+                state["status"] = iteration_status
+                self.repo.save_node_state(state)
+                return iteration_status
+
+        state["status"] = "completed"
+        state["finished_at"] = self._now()
+        self.repo.save_node_state(state)
+        return "completed"
+
+    # ── Action node execution ──────────────────────────────────────────
+
+    def advance_action(
+        self,
+        run: dict[str, Any],
+        node: dict[str, Any],
+        state: dict[str, Any],
+        item: dict[str, Any] | None = None,
+    ) -> str:
+        """Advance an action node by dispatching or polling its binding.
+
+        Action nodes are backed by a binding, which is either an ``api`` call or
+        a ``hermes`` task.  The first time an action is advanced (status
+        ``pending`` or ``ready``), the runner resolves its input mapping,
+        records the attempt, and starts the external work.  On subsequent ticks
+        while the node is ``running``, the runner polls the external system for
+        status.
+
+        Parameters
+        ----------
+        run : dict[str, Any]
+            The run record.
+        node : dict[str, Any]
+            The action node definition.
+        state : dict[str, Any]
+            The node_state for this action.
+        item : dict[str, Any] | None, optional
+            The current loop item when this action is a child of a foreach
+            node.  Available to input mappings as ``$item``.
+
+        Returns
+        -------
+        str
+            The resulting status of the action node.
+        """
+        if state["status"] == "completed":
+            return "completed"
+        if state["status"] == "blocked":
+            return "blocked"
+
+        binding = self.repo.load_binding(node["fk_binding_id"])
+        state["fk_binding_id"] = binding["binding_id"]
+        state["binding_snapshot"] = binding
+
+        if state["status"] in {"pending", "ready"}:
+            state["attempt"] = state.get("attempt", 0) + 1
+            state["status"] = "running"
+            state["started_at"] = state.get("started_at") or self._now()
+            state["input"] = resolve_mapping(
+                node["input_mapping"],
+                context=self._runtime_context(run),
+                item=item,
+                scope=run.get("context") or {},
+            )
+
+            if binding["kind"] == "api":
+                result = self.api.start(binding.get("binding_snapshot") or binding, state["input"])
+            else:
+                state["external_ref"] = state.get("external_ref") or f"hermes-{state['node_state_id']}"
+                result = self.hermes.create_task(state["input"])
+
+            state = self.repo.save_node_state(state)
+            return self.apply_integration_result(run, node, state, result, item=item)
+
+        if state["status"] == "running":
+            if binding["kind"] == "api":
+                if state.get("external_ref"):
+                    result = self.api.inspect(state["external_ref"], binding.get("binding_snapshot") or binding)
+                else:
+                    return state["status"]
+            else:
+                result = self.hermes.inspect_task(state["external_ref"] or state["node_state_id"])
+
+            return self.apply_integration_result(run, node, state, result, item=item)
+
+        return state["status"]
+
+    def apply_integration_result(
+        self,
+        run: dict[str, Any],
+        node: dict[str, Any],
+        state: dict[str, Any],
+        result,
+        *,
+        item: dict[str, Any] | None = None,
+    ) -> str:
+        """Persist and react to the result returned by an integration.
+
+        This method maps the integration result onto the node_state.  Depending
+        on the result status, it may finalize the node as completed, pause the
+        run for a question, fail the run, or simply persist an intermediate
+        status.
+
+        Parameters
+        ----------
+        run : dict[str, Any]
+            The run record.
+        node : dict[str, Any]
+            The action node definition.
+        state : dict[str, Any]
+            The node_state being updated.
+        result
+            The integration result object.  Expected attributes include
+            ``status``, ``native_state``, ``output``, ``error_code``,
+            ``error_message``, ``external_ref``, and ``question_request``.
+        item : dict[str, Any] | None, optional
+            The current loop item, passed through to output mapping.
+
+        Returns
+        -------
+        str
+            The status reported by the integration result.
+        """
+        state["status"] = result.status
+        state["native_state"] = result.native_state
+        state["raw_output"] = result.output
+        state["error_code"] = result.error_code
+        state["error_message"] = result.error_message
+        if result.external_ref:
+            state["external_ref"] = result.external_ref
+
+        if result.status == "completed":
+            state["output"] = resolve_output_mapping(
+                node["output_mapping"],
+                context=self._runtime_context(run),
+                item=item,
+                result=result.output,
+                scope=run.get("context") or {},
+            )
+            state["finished_at"] = self._now()
+            self.repo.save_node_state(state)
+            return "completed"
+
+        if result.status == "blocked":
+            self.repo.save_node_state(state)
+            if result.question_request is not None:
+                self.repo.create_question(
+                    state["node_state_id"],
+                    result.question_request.prompt,
+                    result.question_request.options,
+                    hermes_task_id=state.get("external_ref"),
+                )
+            run = self.repo.load_run(run["run_id"])
+            run["status"] = "paused"
+            run["pause_reason"] = "question"
+            self.repo.save_run(run)
+            return "blocked"
+
+        if result.status == "failed":
+            state["finished_at"] = self._now()
+            self.repo.save_node_state(state)
+            run = self.repo.load_run(run["run_id"])
+            run["status"] = "failed"
+            run["failure_summary"] = state.get("error_message") or "node failed"
+            self.repo.save_run(run)
+            return "failed"
+
+        self.repo.save_node_state(state)
+        return result.status
+
+    # ── Run lifecycle actions ──────────────────────────────────────────
+
+    def cancel_run(self, run_id: str) -> dict[str, Any]:
+        """Mark a run as cancelled.
+
+        Cancellation is a local state transition. In-flight calls to external
+        APIs are not interrupted; the run simply stops being ticked and any
+        non-terminal node_states are marked cancelled.
+
+        Parameters
+        ----------
+        run_id : str
+            The id of the run to cancel.
+
+        Returns
+        -------
+        dict[str, Any]
+            The updated run record.
+
+        Raises
+        ------
+        RunNotFoundError
+            If the run does not exist.
+        RunAlreadyTerminalError
+            If the run is already in a terminal status (completed, failed, or
+            cancelled).
+        """
+        run = self.repo.load_run(run_id)
+        if not run:
+            raise RunNotFoundError(f"unknown run id: {run_id}", entity_id=run_id)
+        if run["status"] in {"completed", "failed", "cancelled"}:
+            raise RunAlreadyTerminalError(f"run {run_id} is already terminal", entity_id=run_id)
+
+        run["status"] = "cancelled"
+        run["pause_reason"] = None
+        run["finished_at"] = self._now()
+        run = self.repo.save_run(run)
+
+        for state in self.repo.load_node_states_for_run(run_id):
+            if state["status"] not in {"completed", "failed", "cancelled"}:
+                state["status"] = "cancelled"
+                state["finished_at"] = self._now()
+                self.repo.save_node_state(state)
+
+        return run
+
+    def retry_run(self, run_id: str) -> dict[str, Any]:
+        """Retry a failed or cancelled run by creating a fresh run.
+
+        The original run is left unchanged. The new run uses the same flow
+        version and context as the original.
+
+        Parameters
+        ----------
+        run_id : str
+            The id of the run to retry.
+
+        Returns
+        -------
+        dict[str, Any]
+            The newly created run record.
+
+        Raises
+        ------
+        RunNotFoundError
+            If the run does not exist.
+        MissingFlowForRunError
+            If the flow referenced by the run can no longer be found.
+        """
+        run = self.repo.load_run(run_id)
+        if not run:
+            raise RunNotFoundError(f"unknown run id: {run_id}", entity_id=run_id)
+
+        flow = self.repo.load_flow(run["fk_flow_id"])
+        if not flow:
+            raise MissingFlowForRunError(f"missing flow for run: {run_id}", entity_id=run_id)
+
+        return self.create_run(flow_slug=flow["slug"], context=run.get("context") or {})
+
+    def delete_run(self, run_id: str) -> None:
+        """Delete a run and all its child records.
+
+        Parameters
+        ----------
+        run_id : str
+            The id of the run to delete.
+
+        Raises
+        ------
+        RunNotFoundError
+            If the run does not exist.
+        """
+        run = self.repo.load_run(run_id)
+        if not run:
+            raise RunNotFoundError(f"unknown run id: {run_id}", entity_id=run_id)
+        self.repo.delete_run(run_id)
+
+    # ── Question handling ──────────────────────────────────────────
+
+    def answer_question(self, question_id: str, answer: str) -> None:
+        """Record an answer for a question and resume the related run.
+
+        This method validates the question, forwards the answer to the Hermes
+        service when the question was created from a Hermes task, persists the
+        answer, and transitions the node_state and run back to ``running`` so
+        the next tick can continue.
+
+        Parameters
+        ----------
+        question_id : str
+            The id of the question being answered.
+        answer : str
+            The answer provided by the user.
+
+        Raises
+        ------
+        QuestionNotFoundError
+            If the question does not exist.
+        MissingNodeStateForQuestionError
+            If the node_state referenced by the question cannot be found.
+        MissingRunForQuestionError
+            If the run referenced by the node_state cannot be found.
+        """
+        question = self.repo.load_question(question_id)
+        if not question:
+            raise QuestionNotFoundError(f"unknown question id: {question_id}", entity_id=question_id)
+
+        state = self.repo.load_node_state(question["fk_node_state_id"])
+        if not state:
+            raise MissingNodeStateForQuestionError(f"missing node state for question: {question_id}", entity_id=question_id)
+
+        run = self.repo.load_run(state["fk_run_id"])
+        if not run:
+            raise MissingRunForQuestionError(f"missing run for question: {question_id}", entity_id=question_id)
+
+        if question.get("hermes_task_id"):
+            self.hermes.answer_question(question["hermes_task_id"], answer)
+
+        question["answer"] = answer
+        question["status"] = "answered"
+        question["answered_at"] = self._now()
+        self.repo.save_question(question)
+
+        state["status"] = "running"
+        self.repo.save_node_state(state)
+
+        run["status"] = "running"
+        run["pause_reason"] = None
+        self.repo.save_run(run)
+
+    # ── Run control extensions ──────────────────────────────────────────
+
+    def restart_from(self, run_id: str, node_id: str) -> dict[str, Any]:
+        """Create a new run from the same flow version/context, copying completed upstream outputs.
+
+        Args:
+            run_id: The source run id.
+            node_id: The flow node id to restart from. Must be a top-level action node.
+
+        Returns:
+            The newly created run record.
+
+        Raises:
+            RunNotFoundError: 404 if source run does not exist.
+            FlowNodeNotFoundError: 404 if node does not exist in the flow version.
+            RunRestartTargetError: 400 if target is not a top-level action node.
+        """
+        source_run = self.repo.load_run(run_id)
+        if not source_run:
+            raise RunNotFoundError(f"unknown run id: {run_id}", entity_id=run_id)
+
+        target_node = self.repo.load_flow_node(node_id)
+        if not target_node or target_node["fk_flow_version_id"] != source_run["fk_flow_version_id"]:
+            raise FlowNodeNotFoundError(f"node {node_id} not found in flow version", entity_id=node_id)
+
+        if target_node.get("fk_parent_flow_node_id") is not None or target_node["kind"] not in {"api", "hermes"}:
+            raise RunRestartTargetError(
+                f"node {node_id} is not a top-level action node", entity_id=node_id
+            )
+
+        top_nodes = self.repo.load_top_level_nodes(source_run["fk_flow_version_id"])
+        target_ord = target_node["ord"]
+
+        flow = self.repo.load_flow(source_run["fk_flow_id"])
+        if not flow:
+            raise MissingFlowForRunError(f"missing flow for run: {run_id}", entity_id=run_id)
+
+        new_run = self.create_run(flow_slug=flow["slug"], context=source_run.get("context") or {})
+
+        for node in top_nodes:
+            if node["ord"] >= target_ord:
+                continue
+            self.repo.copy_run_node_state(run_id, new_run["run_id"], node["flow_node_id"])
+
+        return new_run
+
+    def retry_node(self, run_id: str, node_state_id: str) -> dict[str, Any]:
+        """Reset a top-level node state to pending so the next tick re-runs it.
+
+        Args:
+            run_id: The run id.
+            node_state_id: The node state id to retry.
+
+        Returns:
+            The refreshed node state.
+
+        Raises:
+            RunNotFoundError: 404 if run does not exist.
+            NodeStateNotFoundError: 404 if node state does not belong to the run.
+            NodeStateRetryError: 400 if node state is not a top-level action node.
+        """
+        run = self.repo.load_run(run_id)
+        if not run:
+            raise RunNotFoundError(f"unknown run id: {run_id}", entity_id=run_id)
+
+        state = self.repo.load_node_state(node_state_id)
+        if not state or state["fk_run_id"] != run_id:
+            raise NodeStateNotFoundError(
+                f"node state {node_state_id} not found for run {run_id}", entity_id=node_state_id
+            )
+
+        if state.get("fk_loop_iteration_id") is not None:
+            raise NodeStateRetryError(
+                f"node state {node_state_id} is inside a foreach loop", entity_id=node_state_id
+            )
+
+        node = self.repo.load_flow_node(state["fk_flow_node_id"])
+        if not node or node["kind"] not in {"api", "hermes"}:
+            raise NodeStateRetryError(
+                f"node state {node_state_id} is not an action node", entity_id=node_state_id
+            )
+
+        if run["status"] in {"completed", "failed", "cancelled"}:
+            run["status"] = "running"
+            run["finished_at"] = None
+            run["failure_summary"] = None
+            run["pause_reason"] = None
+            self.repo.save_run(run)
+
+        return self.repo.reset_node_state(node_state_id)
+
+    # ── Runtime helpers ──────────────────────────────────────────
+
+    def _runtime_context(self, run: dict[str, Any]) -> dict[str, Any]:
+        """Build the context object used by input/output mappings.
+
+        The runtime context exposes completed outputs from top-level nodes
+        (only those not inside a loop iteration) as ``$nodes.<node_id>`` and
+        the run's user context as ``$scope``.
+
+        Parameters
+        ----------
+        run : dict[str, Any]
+            The run record whose context is being built.
+
+        Returns
+        -------
+        dict[str, Any]
+            Mapping context with ``nodes`` and ``scope`` keys.
+        """
+        node_outputs: dict[str, Any] = {}
+        for state in self.repo.load_node_states_for_run(run["run_id"]):
+            if state.get("fk_loop_iteration_id") is None:
+                node_outputs[state["fk_flow_node_id"]] = {
+                    "output": state.get("output"),
+                    "raw_output": state.get("raw_output"),
+                    "status": state.get("status"),
+                }
+
+        return {"nodes": node_outputs, "scope": run.get("context") or {}}
+
+    def _now(self) -> str:
+        """Return the current UTC time as an ISO 8601 string.
+
+        Returns
+        -------
+        str
+            UTC timestamp formatted as ``%Y-%m-%dT%H:%M:%SZ``.
+        """
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
