@@ -259,3 +259,113 @@ class TaskrRepository:
         self.conn.execute("DELETE FROM RUN WHERE run_id = ?", (run_id,))
         self.conn.commit()
 
+    # ── Flow node management ──────────────────────────────────────────────────
+
+    def create_flow_node(
+        self,
+        flow_version_id: str,
+        kind: str,
+        ord: int,
+        title: str,
+        *,
+        node_id: str | None = None,
+        parent_node_id: str | None = None,
+        binding_id: str | None = None,
+        input_mapping: dict[str, Any] | None = None,
+        output_mapping: dict[str, Any] | None = None,
+        items_path: str | None = None,
+        item_key_path: str | None = None,
+        failure_policy: str = "stop",
+        policy_refs: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Insert a new node into a flow version. Only draft versions are editable."""
+        node_id = node_id or f"n-{uuid.uuid4().hex[:12]}"
+        self.conn.execute(
+            """
+            INSERT INTO FLOW_NODE (
+                flow_node_id, fk_flow_version_id, kind, fk_parent_flow_node_id, ord, title, fk_binding_id,
+                input_mapping, output_mapping, items_path, item_key_path,
+                failure_policy, policy_refs
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                node_id,
+                flow_version_id,
+                kind,
+                parent_node_id,
+                ord,
+                title,
+                binding_id,
+                self._json(input_mapping or {}),
+                self._json(output_mapping or {}),
+                items_path,
+                item_key_path,
+                failure_policy,
+                self._json(policy_refs or []),
+            ),
+        )
+        self.conn.commit()
+        return self.load_flow_node(node_id)
+
+    def load_flow_node(self, node_id: str) -> dict[str, Any] | None:
+        """Fetch a single flow node by id."""
+        row = self.conn.execute("SELECT * FROM FLOW_NODE WHERE flow_node_id = ?", (node_id,)).fetchone()
+        return self._row_to_dict(row, "FLOW_NODE") if row else None
+
+    def load_top_level_nodes(self, flow_version_id: str) -> list[dict[str, Any]]:
+        """Return top-level nodes for a flow version, ordered by ord."""
+        rows = self.conn.execute(
+            "SELECT * FROM FLOW_NODE WHERE fk_flow_version_id = ? AND fk_parent_flow_node_id IS NULL ORDER BY ord, flow_node_id",
+            (flow_version_id,),
+        ).fetchall()
+        return [self._row_to_dict(row, "FLOW_NODE") for row in rows]
+
+    def load_child_nodes(self, parent_node_id: str) -> list[dict[str, Any]]:
+        """Return children of a parent node, ordered by ord."""
+        rows = self.conn.execute(
+            "SELECT * FROM FLOW_NODE WHERE fk_parent_flow_node_id = ? ORDER BY ord, flow_node_id",
+            (parent_node_id,),
+        ).fetchall()
+        return [self._row_to_dict(row, "FLOW_NODE") for row in rows]
+
+    def update_flow_node(self, node_id: str, updates: dict[str, Any]) -> dict[str, Any]:
+        """Update mutable fields on a flow node. Only draft versions are editable.
+
+        Allowed fields: title, ord, binding_id, input_mapping,
+        output_mapping, items_path, item_key_path, failure_policy, policy_refs.
+        """
+        allowed = {
+            "title", "ord", "fk_binding_id", "input_mapping", "output_mapping",
+            "items_path", "item_key_path", "failure_policy", "policy_refs",
+        }
+        set_parts = []
+        values = []
+        for key in allowed:
+            if key in updates:
+                set_parts.append(f"{key} = ?")
+                if key in ("input_mapping", "output_mapping"):
+                    values.append(self._json(updates[key] or {}))
+                elif key == "policy_refs":
+                    values.append(self._json(updates[key] or []))
+                else:
+                    values.append(updates[key])
+        if not set_parts:
+            return self.load_flow_node(node_id)
+        set_parts.append("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+        values.append(node_id)
+        self.conn.execute(
+            f"UPDATE FLOW_NODE SET {', '.join(set_parts)} WHERE flow_node_id = ?",
+            tuple(values),
+        )
+        self.conn.commit()
+        return self.load_flow_node(node_id)
+
+    def delete_flow_node(self, node_id: str) -> None:
+        """Delete a flow node. Only draft versions are editable.
+
+        Cascading FK on flow_nodes deletes child nodes automatically.
+        """
+        self.conn.execute("DELETE FROM FLOW_NODE WHERE flow_node_id = ?", (node_id,))
+        self.conn.commit()
+
