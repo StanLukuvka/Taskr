@@ -106,3 +106,11 @@ class TaskrRepository:
         if value is None:
             return None
         return json.dumps(value)
+
+    # ── Seeding ──────────────────────────────────────────────────
+
+    def seed_data(self) -> None:
+        """Seed the demo flow data. Delegates to app.seed.seed_demo_data."""
+        from app.flow.seed import seed_demo_data
+        seed_demo_data(self)
+
