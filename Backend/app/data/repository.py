@@ -184,3 +184,26 @@ class TaskrRepository:
             "SELECT * FROM FLOW_VERSION WHERE fk_flow_id = ? AND status = 'active' ORDER BY version DESC LIMIT 1",
             (flow_id,),
         )
+
+    def create_flow(self, title: str, slug: str, description: str) -> dict[str, Any]:
+        """Create a new flow."""
+        flow_id = f"flow-{uuid.uuid4().hex[:12]}"
+        self.conn.execute(
+            "INSERT INTO FLOW (flow_id, title, slug, description) VALUES (?, ?, ?, ?)",
+            (flow_id, title, slug, description),
+        )
+        self.conn.commit()
+        return self.load_flow(flow_id)
+
+    def create_run(self, flow_id: str, flow_version_id: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Create a new run and return it. Runs start with status 'running'."""
+        run_id = f"run-{uuid.uuid4().hex[:12]}"
+        self.conn.execute(
+            """
+            INSERT INTO RUN (run_id, fk_flow_id, fk_flow_version_id, status, context, started_at)
+            VALUES (?, ?, ?, 'running', ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            """,
+            (run_id, flow_id, flow_version_id, self._json(context or {})),
+        )
+        self.conn.commit()
+        return self.load_run(run_id)
