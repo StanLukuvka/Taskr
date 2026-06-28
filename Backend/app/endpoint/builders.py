@@ -30,3 +30,38 @@ def build_flow_response(flow: dict[str, Any]) -> dict[str, Any]:
         "slug": flow["slug"],
         "description": flow["description"],
     }
+
+
+def build_run_response(run: dict[str, Any], repo: TaskrRepository) -> dict[str, Any]:
+    """Build a public RunResponse dictionary from a run record.
+
+    This helper joins node states with their corresponding flow node metadata
+    (title and kind) and copies the top-level run fields into the response.
+
+    Args:
+        run: The raw run record from the repository.
+        repo: The repository used to query node states.
+
+    Returns:
+        A dictionary matching the RunResponse model.
+
+    Note:
+        The node-state query uses repo.load_node_states_for_run_with_node_info()
+        to join node states with their flow node metadata (title, kind, ord).
+    """
+    states = repo.load_node_states_for_run_with_node_info(run["run_id"])
+
+    return {
+        "id": run["run_id"],
+        "status": run["status"],
+        "flow_id": run["fk_flow_id"],
+        "flow_version_id": run["fk_flow_version_id"],
+        "context": run.get("context"),
+        "pause_reason": run.get("pause_reason"),
+        "failure_summary": run.get("failure_summary"),
+        "created_at": run.get("created_at"),
+        "started_at": run.get("started_at"),
+        "finished_at": run.get("finished_at"),
+        "node_states": states,
+    }
+
