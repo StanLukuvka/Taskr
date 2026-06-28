@@ -386,3 +386,93 @@ class TaskrRepository:
         config = self._one(f"SELECT * FROM {config_table} WHERE fk_binding_id = ?", (binding_id,)) or {}
         binding.update(config)
         return binding
+
+    def get_or_create_node_state(self, run_id: str, node_id: str, loop_iteration_id: str | None) -> dict[str, Any]:
+        """Find the node_state for this (run, node, iteration), or create a pending one.
+
+        Each node_state is one execution of a node in a run. For foreach loops,
+        a node_state is also created for each loop iteration, linked via
+        loop_iteration_id. This method lazily materializes these rows as the
+        flow is discovered.
+        """
+        if loop_iteration_id is None:
+            row = self.conn.execute(
+                "SELECT * FROM NODE_STATE WHERE fk_run_id = ? AND fk_flow_node_id = ? AND fk_loop_iteration_id IS NULL",
+                (run_id, node_id),
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                "SELECT * FROM NODE_STATE WHERE fk_run_id = ? AND fk_flow_node_id = ? AND fk_loop_iteration_id = ?",
+                (run_id, node_id, loop_iteration_id),
+            ).fetchone()
+        if row:
+            return self._row_to_dict(row, "NODE_STATE")
+
+        state_id = f"ns-{uuid.uuid4().hex[:12]}"
+        binding = self.conn.execute("SELECT fk_binding_id FROM FLOW_NODE WHERE flow_node_id = ?", (node_id,)).fetchone()
+        self.conn.execute(
+            """
+            INSERT INTO NODE_STATE (node_state_id, fk_run_id, fk_flow_node_id, fk_loop_iteration_id, status, fk_binding_id)
+            VALUES (?, ?, ?, ?, 'pending', ?)
+            """,
+            (state_id, run_id, node_id, loop_iteration_id, binding[0] if binding else None),
+        )
+        self.conn.commit()
+        return self.load_node_state(state_id)
+
+    def load_node_state(self, node_state_id: str) -> dict[str, Any] | None:
+        """Fetch a single node_state by id."""
+        row = self.conn.execute("SELECT * FROM NODE_STATE WHERE node_state_id = ?", (node_state_id,)).fetchone()
+        return self._row_to_dict(row, "NODE_STATE") if row else None
+
+    def load_node_states_for_run(self, run_id: str) -> list[dict[str, Any]]:
+        """Return all node_states for a run, oldest first."""
+        rows = self.conn.execute(
+            "SELECT * FROM NODE_STATE WHERE fk_run_id = ? ORDER BY created_at, node_state_id",
+            (run_id,),
+        ).fetchall()
+        return [self._row_to_dict(row, "NODE_STATE") for row in rows]
+
+    def load_node_states_for_run_with_node_info(self, run_id: str) -> list[dict[str, Any]]:
+        """Return node_states joined with flow node metadata (title, kind, ord) for a run."""
+        rows = self.conn.execute(
+            """
+            SELECT ns.*, fn.title AS node_title, fn.kind AS node_kind, fn.ord AS ord
+            FROM NODE_STATE ns
+            JOIN FLOW_NODE fn ON fn.flow_node_id = ns.fk_flow_node_id
+            WHERE ns.fk_run_id = ?
+            ORDER BY fn.ord, fn.flow_node_id
+            """,
+            (run_id,),
+        ).fetchall()
+        return [self._row_to_dict(row, "NODE_STATE") for row in rows]
+
+    def save_node_state(self, state: dict[str, Any]) -> dict[str, Any]:
+        """Persist all mutable fields on a node_state and return the refreshed row."""
+        self.conn.execute(
+            """
+            UPDATE NODE_STATE
+            SET status = ?, fk_binding_id = ?, binding_snapshot = ?, external_ref = ?, native_state = ?,
+                input = ?, raw_output = ?, output = ?, error_code = ?, error_message = ?, attempt = ?,
+                started_at = ?, finished_at = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE node_state_id = ?
+            """,
+            (
+                state["status"],
+                state.get("fk_binding_id"),
+                self._json(state.get("binding_snapshot")),
+                state.get("external_ref"),
+                self._json(state.get("native_state")),
+                self._json(state.get("input")),
+                self._json(state.get("raw_output")),
+                self._json(state.get("output")),
+                state.get("error_code"),
+                state.get("error_message"),
+                state.get("attempt", 0),
+                state.get("started_at"),
+                state.get("finished_at"),
+                state["node_state_id"],
+            ),
+        )
+        self.conn.commit()
+        return self.load_node_state(state["node_state_id"])
