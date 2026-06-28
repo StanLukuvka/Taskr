@@ -51,12 +51,19 @@ OPENAPI_TAGS = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize the application database schema on startup.
+    """Initialize the application database and seed demo data on startup.
 
-    Ensures that all tables required by the repository layer exist before
-    the first request is handled.
+    Resets the database to a clean state on every restart so the demo
+    always starts from a known-good baseline. This avoids stale data
+    inconsistencies from schema changes or partial seeds.
     """
-    TaskrRepository.apply_schema()
+    TaskrRepository.reset_db()
+    conn = TaskrRepository.get_connection()
+    try:
+        repo = TaskrRepository(conn)
+        repo.seed_data()
+    finally:
+        conn.close()
     yield
 
 
