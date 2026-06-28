@@ -39,3 +39,13 @@ class TaskrRepository:
         self.conn = conn
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
+
+    def _one(self, query: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
+        """Run a SELECT and return a single row, or None."""
+        row = self.conn.execute(query, params).fetchone()
+        return self._row_to_dict(row) if row else None
+
+    def _all(self, query: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+        """Run a SELECT and return every row as a dict."""
+        rows = self.conn.execute(query, params).fetchall()
+        return [self._row_to_dict(row) for row in rows]
