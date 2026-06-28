@@ -135,3 +135,45 @@ class TaskrRepository:
         """Fetch a flow by its URL-friendly slug."""
         return self._one("SELECT * FROM FLOW WHERE slug = ?", (slug,))
 
+    # ── Flow version management ──────────────────────────────────────────────────
+
+    def load_flow_version(self, flow_version_id: str) -> dict[str, Any] | None:
+        """Fetch a single flow version by id."""
+        return self._one("SELECT * FROM FLOW_VERSION WHERE flow_version_id = ?", (flow_version_id,))
+
+    def create_flow_version(self, flow_id: str) -> dict[str, Any]:
+        """Create a new draft flow version for a flow.
+
+        The version number is auto-incremented based on existing versions.
+        """
+        row = self.conn.execute(
+            "SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM FLOW_VERSION WHERE fk_flow_id = ?",
+            (flow_id,),
+        ).fetchone()
+        next_version = int(row["next_version"])
+        version_id = f"fv-{uuid.uuid4().hex[:12]}"
+        self.conn.execute(
+            "INSERT INTO FLOW_VERSION (flow_version_id, fk_flow_id, version, status) VALUES (?, ?, ?, 'draft')",
+            (version_id, flow_id, next_version),
+        )
+        self.conn.commit()
+        return self.load_flow_version(version_id)
+
+    def publish_flow_version(self, flow_version_id: str) -> dict[str, Any]:
+        """Activate a draft flow version. Any previously active version is archived."""
+        version = self.load_flow_version(flow_version_id)
+        if not version:
+            raise FlowVersionNotFoundError(entity_id=flow_version_id)
+        if version["status"] != "draft":
+            raise FlowVersionNotDraftError(entity_id=flow_version_id)
+
+        self.conn.execute(
+            "UPDATE FLOW_VERSION SET status = 'archived' WHERE fk_flow_id = ? AND status = 'active'",
+            (version["fk_flow_id"],),
+        )
+        self.conn.execute(
+            "UPDATE FLOW_VERSION SET status = 'active', activated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE flow_version_id = ?",
+            (flow_version_id,),
+        )
+        self.conn.commit()
+        return self.load_flow_version(flow_version_id)
