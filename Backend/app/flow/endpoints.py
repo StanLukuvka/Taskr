@@ -177,3 +177,28 @@ def delete_flow_node(node_id: str):
 
     repo.delete_flow_node(node_id)
     return {"status": "deleted", "node_id": node_id}
+
+
+# ── Flow & version management ───────────────────────────────
+
+@router.post("/flows", response_model=FlowResponseFull, tags=["Flows"])
+def create_flow(body: FlowCreateRequest):
+    """Create a new flow.
+
+    Args:
+        body: The flow creation payload.
+
+    Returns:
+        The newly created flow record.
+
+    Raises:
+        FlowSlugAlreadyInUseError: 400 if the slug is already in use.
+    """
+    repo = _get_repo()
+    existing = repo.load_flow_by_slug(body.slug)
+    if existing:
+        raise FlowSlugAlreadyInUseError(
+            f"Flow slug '{body.slug}' is already in use", entity_id=body.slug
+        )
+    return repo.create_flow(body.title, body.slug, body.description)
+
