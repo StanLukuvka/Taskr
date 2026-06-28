@@ -202,3 +202,30 @@ def create_flow(body: FlowCreateRequest):
         )
     return repo.create_flow(body.title, body.slug, body.description)
 
+
+@router.post(
+    "/flows/{flow_id}/versions",
+    response_model=FlowVersionCreateResponse,
+    tags=["Flow Versions"],
+)
+def create_flow_version(flow_id: str):
+    """Create a new draft flow version for a flow.
+
+    The version number is auto-incremented. The new version starts in draft
+    status so nodes can be added before publishing.
+
+    Args:
+        flow_id: The ID of the flow to create a version for.
+
+    Returns:
+        The newly created flow version record.
+
+    Raises:
+        FlowNotFoundError: 404 if the flow does not exist.
+    """
+    repo = _get_repo()
+    flow = repo.load_flow(flow_id)
+    if not flow:
+        raise FlowNotFoundError(f"Flow {flow_id} not found", entity_id=flow_id)
+    return repo.create_flow_version(flow_id)
+
