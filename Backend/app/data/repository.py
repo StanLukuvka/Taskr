@@ -207,3 +207,17 @@ class TaskrRepository:
         )
         self.conn.commit()
         return self.load_run(run_id)
+
+    def list_runs(self, statuses: Iterable[str]) -> list[dict[str, Any]]:
+        """Return all runs with any of the given statuses."""
+        statuses = list(statuses)
+        placeholders = ",".join("?" for _ in statuses)
+        return self._all(
+            f"SELECT * FROM RUN WHERE status IN ({placeholders}) ORDER BY created_at, run_id",
+            tuple(statuses),
+        )
+
+    def list_all_runs(self) -> list[dict[str, Any]]:
+        """Return all runs ordered by creation time."""
+        return self._all("SELECT * FROM RUN ORDER BY created_at, run_id")
+
