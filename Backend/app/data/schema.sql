@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS FLOW (
     flow_id     TEXT PRIMARY KEY,        -- EXPLANATION: **Unique internal identifier for the flow (e.g. 'flow-soda').**
     title       TEXT NOT NULL,           -- EXPLANATION: **Human-readable display name shown in UI listings.**
     slug        TEXT NOT NULL UNIQUE,    -- EXPLANATION: **URL-friendly identifier used to select a flow when creating a run (e.g. 'soda-comparison').**
-    description TEXT NOT NULL,           -- EXPLANATION: **One-line summary of what the flow answers; display-only metadata, not consumed by the execution engine.** -- USER: renamed from "question"
+    description TEXT NOT NULL,           -- EXPLANATION: **One-line summary of what the flow answers; display-only metadata, not consumed by the execution engine.**
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp of flow creation.**
     updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))  -- EXPLANATION: **Timestamp of the last modification to the flow record.**
 );
@@ -41,7 +41,6 @@ CREATE TABLE IF NOT EXISTS FLOW_VERSION (
     fk_flow_id       TEXT NOT NULL REFERENCES FLOW(flow_id) ON DELETE CASCADE, -- EXPLANATION: **Parent flow this version belongs to.**
     version          INTEGER NOT NULL CHECK (version > 0), -- EXPLANATION: **Auto-incremented version number within the flow.**
     status           TEXT NOT NULL DEFAULT 'draft' -- EXPLANATION: **Lifecycle state of the version: 'draft' (editable), 'active' (immutable, used by runs), or 'archived' (superseded by a newer active version).**
-                     -- USER: Split status to be 'version status' and 'operation status'. a flow version is either current or superseded, but can be enabled or disabled as well.
                      CHECK (status IN ('draft', 'active', 'archived')),
     created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp of version creation.**
     activated_at     TEXT,               -- EXPLANATION: **Timestamp when the version was promoted from draft to active; NULL while still in draft.**
@@ -81,8 +80,8 @@ CREATE TABLE IF NOT EXISTS HERMES_BINDING_CONFIG (
                          REFERENCES INTEGRATION_BINDING(binding_id) ON DELETE CASCADE,
     board                TEXT NOT NULL,   -- EXPLANATION: **Hermes Kanban board name where tasks for this binding are created.**
     profile              TEXT,            -- EXPLANATION: **Hermes profile to use when dispatching the task; NULL means use the default profile.**
-    task_title_template  TEXT NOT NULL,   -- EXPLANATION: **Jinja-style template string for the Hermes task title, e.g. 'Research {{product.name}}'.** -- USER: task templates would be flow node based. not item based? this conflates access with implementation
-    task_body_template   TEXT NOT NULL,   -- EXPLANATION: **Jinja-style template string for the Hermes task body/prompt.** -- USER: task templates would be flow node based. not item based? this conflates access with implementation:
+    task_title_template  TEXT NOT NULL,   -- EXPLANATION: **Jinja-style template string for the Hermes task title, e.g. 'Research {{product.name}}'.**
+    task_body_template   TEXT NOT NULL,   -- EXPLANATION: **Jinja-style template string for the Hermes task body/prompt.**
     skills               TEXT NOT NULL DEFAULT '[]' -- EXPLANATION: **JSON array of Hermes skill names to load when running the task.**
                          CHECK (json_valid(skills) AND json_type(skills) = 'array'),
     tenant_template      TEXT,            -- EXPLANATION: **Optional tenant identifier template for multi-tenant Hermes deployments.**
