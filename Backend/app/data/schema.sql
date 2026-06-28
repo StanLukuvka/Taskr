@@ -1,0 +1,908 @@
+-- Taskr SQLite schema v3
+-- Canonical MVP data shape for:
+--   * versioned goal/canvas flows
+--   * persistent coordination state
+--   * first-class Hermes integration
+--   * generic synchronous/asynchronous API calls
+--   * durable foreach initialization and iteration records
+--   * questions attached directly to exact node-state instances
+--
+-- Major v3 normalization:
+--
+--   Run
+--   └── NodeState
+--       ├── Question
+--       └── LoopState (only when the node is foreach)
+--           └── LoopIteration
+--               └── child NodeStates
+--
+-- SQLite, one database file.
+-- Flow versions become immutable once published or used by a run.
+
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+
+
+-- ============================================================
+-- Flow / canvas and immutable flow versions
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS FLOW (
+    flow_id     TEXT PRIMARY KEY,        -- EXPLANATION: **Unique internal identifier for the flow (e.g. 'flow-soda').**
+    title       TEXT NOT NULL,           -- EXPLANATION: **Human-readable display name shown in UI listings.**
+    slug        TEXT NOT NULL UNIQUE,    -- EXPLANATION: **URL-friendly identifier used to select a flow when creating a run (e.g. 'soda-comparison').**
+    description TEXT NOT NULL,           -- EXPLANATION: **One-line summary of what the flow answers; display-only metadata, not consumed by the execution engine.** -- USER: renamed from "question"
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp of flow creation.**
+    updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))  -- EXPLANATION: **Timestamp of the last modification to the flow record.**
+);
+
+CREATE TABLE IF NOT EXISTS FLOW_VERSION (
+    flow_version_id  TEXT PRIMARY KEY,   -- EXPLANATION: **Unique identifier for this version of the flow (e.g. 'fv-1').**
+    fk_flow_id       TEXT NOT NULL REFERENCES FLOW(flow_id) ON DELETE CASCADE, -- EXPLANATION: **Parent flow this version belongs to.**
+    version          INTEGER NOT NULL CHECK (version > 0), -- EXPLANATION: **Auto-incremented version number within the flow.**
+    status           TEXT NOT NULL DEFAULT 'draft' -- EXPLANATION: **Lifecycle state of the version: 'draft' (editable), 'active' (immutable, used by runs), or 'archived' (superseded by a newer active version).**
+                     -- USER: Split status to be 'version status' and 'operation status'. a flow version is either current or superseded, but can be enabled or disabled as well.
+                     CHECK (status IN ('draft', 'active', 'archived')),
+    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp of version creation.**
+    activated_at     TEXT,               -- EXPLANATION: **Timestamp when the version was promoted from draft to active; NULL while still in draft.**
+
+    UNIQUE (fk_flow_id, version)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_flow_version_one_active
+ON FLOW_VERSION(fk_flow_id)
+WHERE status = 'active';
+
+
+-- ============================================================
+-- Integration bindings
+-- ============================================================
+-- Only two first-class binding kinds exist:
+--
+--   hermes : domain-aware task integration
+--   api    : generic deterministic service boundary, including Windmill
+--
+-- auth_ref is a secret/configuration lookup key. Secret values are
+-- never stored in these tables.
+
+CREATE TABLE IF NOT EXISTS INTEGRATION_BINDING (
+    binding_id      TEXT PRIMARY KEY,    -- EXPLANATION: **Unique identifier for the binding (e.g. 'b-api-collect').**
+    kind            TEXT NOT NULL CHECK (kind IN ('hermes', 'api')), -- EXPLANATION: **Which integration type this binding configures: 'hermes' for Hermes tasks or 'api' for generic HTTP calls.**
+    display_title   TEXT NOT NULL,       -- EXPLANATION: **Human-readable name shown in UI when referring to this binding.**
+    is_enabled      INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)), -- EXPLANATION: **Soft toggle: 1 means the binding can be dispatched, 0 means it is disabled.**
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp of binding creation.**
+    updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))  -- EXPLANATION: **Timestamp of the last modification to the binding.**
+);
+
+
+
+CREATE TABLE IF NOT EXISTS HERMES_BINDING_CONFIG (
+    fk_binding_id        TEXT PRIMARY KEY -- EXPLANATION: **Foreign key to INTEGRATION_BINDING.binding_id; this is the Hermes-specific config row.**
+                         REFERENCES INTEGRATION_BINDING(binding_id) ON DELETE CASCADE,
+    board                TEXT NOT NULL,   -- EXPLANATION: **Hermes Kanban board name where tasks for this binding are created.**
+    profile              TEXT,            -- EXPLANATION: **Hermes profile to use when dispatching the task; NULL means use the default profile.**
+    task_title_template  TEXT NOT NULL,   -- EXPLANATION: **Jinja-style template string for the Hermes task title, e.g. 'Research {{product.name}}'.** -- USER: task templates would be flow node based. not item based? this conflates access with implementation
+    task_body_template   TEXT NOT NULL,   -- EXPLANATION: **Jinja-style template string for the Hermes task body/prompt.** -- USER: task templates would be flow node based. not item based? this conflates access with implementation:
+    skills               TEXT NOT NULL DEFAULT '[]' -- EXPLANATION: **JSON array of Hermes skill names to load when running the task.**
+                         CHECK (json_valid(skills) AND json_type(skills) = 'array'),
+    tenant_template      TEXT,            -- EXPLANATION: **Optional tenant identifier template for multi-tenant Hermes deployments.**
+    workspace_template   TEXT,            -- EXPLANATION: **Optional workspace identifier template for Hermes workspace isolation.**
+    goal_mode            INTEGER NOT NULL DEFAULT 0 CHECK (goal_mode IN (0, 1)) -- EXPLANATION: **0 = standard task mode, 1 = Hermes goal mode for long-running autonomous tasks.**
+);
+
+CREATE TABLE IF NOT EXISTS API_BINDING_CONFIG (
+    fk_binding_id        TEXT PRIMARY KEY -- EXPLANATION: **Foreign key to INTEGRATION_BINDING.binding_id; this is the API-specific config row.**
+                         REFERENCES INTEGRATION_BINDING(binding_id) ON DELETE CASCADE,
+
+    method               TEXT NOT NULL    -- EXPLANATION: **HTTP method for the API call.**
+                         CHECK (method IN ('GET', 'POST', 'PUT', 'PATCH', 'DELETE')),
+    url_template         TEXT NOT NULL,   -- EXPLANATION: **URL template for the API endpoint; may contain path placeholders resolved at dispatch time.**
+
+    auth_ref             TEXT,            -- EXPLANATION: **Lookup key for the auth secret; the actual secret value is stored externally, never in this table.**
+    headers              TEXT NOT NULL DEFAULT '{}' -- EXPLANATION: **JSON object of static HTTP headers to send with the request.**
+                         CHECK (json_valid(headers) AND json_type(headers) = 'object'),
+    request_mode         TEXT NOT NULL DEFAULT 'json' -- EXPLANATION: **How request parameters are sent: 'json' (body), 'query' (URL params), or 'none'.**
+                         CHECK (request_mode IN ('json', 'query', 'none')),
+
+    completion_mode      TEXT NOT NULL DEFAULT 'response' -- EXPLANATION: **How completion is determined: 'response' means the call completes immediately when the HTTP response arrives, 'poll' means an external ref is checked later.**
+                         CHECK (completion_mode IN ('response', 'poll')),
+
+    external_ref_path    TEXT,            -- EXPLANATION: **For poll mode: JSON path in the initial response to extract the external reference ID for later status checks.**
+    status_method        TEXT DEFAULT 'GET' -- EXPLANATION: **HTTP method for the polling status endpoint.**
+                         CHECK (status_method IN ('GET', 'POST')),
+    status_url_template  TEXT,            -- EXPLANATION: **For poll mode: URL template (with external ref) for checking the operation's current status.**
+    status_path          TEXT,            -- EXPLANATION: **For poll mode: JSON path in the status response to extract the current status string.**
+
+    success_values       TEXT NOT NULL DEFAULT '["success","completed"]' -- EXPLANATION: **JSON array of status strings that mean the polled operation completed successfully.**
+                         CHECK (
+                             json_valid(success_values)
+                             AND json_type(success_values) = 'array'
+                         ),
+    failure_values       TEXT NOT NULL DEFAULT '["failure","failed","cancelled"]' -- EXPLANATION: **JSON array of status strings that mean the polled operation failed.**
+                         CHECK (
+                             json_valid(failure_values)
+                             AND json_type(failure_values) = 'array'
+                         ),
+
+    result_path          TEXT,            -- EXPLANATION: **For poll mode: JSON path in the status response to extract the final result payload.**
+
+    CHECK (
+        completion_mode = 'response'
+        OR (
+            completion_mode = 'poll'
+            AND external_ref_path IS NOT NULL
+            AND status_url_template IS NOT NULL
+            AND status_path IS NOT NULL
+        )
+    )
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_hermes_binding_kind_insert
+BEFORE INSERT ON HERMES_BINDING_CONFIG
+FOR EACH ROW
+WHEN COALESCE(
+    (SELECT kind FROM INTEGRATION_BINDING WHERE binding_id = NEW.fk_binding_id),
+    ''
+) <> 'hermes'
+BEGIN
+    SELECT RAISE(ABORT, 'binding is not kind=hermes');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_hermes_binding_kind_update
+BEFORE UPDATE OF fk_binding_id ON HERMES_BINDING_CONFIG
+FOR EACH ROW
+WHEN COALESCE(
+    (SELECT kind FROM INTEGRATION_BINDING WHERE binding_id = NEW.fk_binding_id),
+    ''
+) <> 'hermes'
+BEGIN
+    SELECT RAISE(ABORT, 'binding is not kind=hermes');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_api_binding_kind_insert
+BEFORE INSERT ON API_BINDING_CONFIG
+FOR EACH ROW
+WHEN COALESCE(
+    (SELECT kind FROM INTEGRATION_BINDING WHERE binding_id = NEW.fk_binding_id),
+    ''
+) <> 'api'
+BEGIN
+    SELECT RAISE(ABORT, 'binding is not kind=api');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_api_binding_kind_update
+BEFORE UPDATE OF fk_binding_id ON API_BINDING_CONFIG
+FOR EACH ROW
+WHEN COALESCE(
+    (SELECT kind FROM INTEGRATION_BINDING WHERE binding_id = NEW.fk_binding_id),
+    ''
+) <> 'api'
+BEGIN
+    SELECT RAISE(ABORT, 'binding is not kind=api');
+END;
+
+
+-- ============================================================
+-- Flow nodes
+-- ============================================================
+-- kind:
+--
+--   api     -> calls one API binding
+--   hermes  -> creates/observes one Hermes task
+--   foreach -> snapshots a list and executes child flow nodes per item
+--
+-- Child nodes use fk_parent_flow_node_id. A composite self-FK ensures that
+-- parent and child belong to the same flow version.
+--
+-- Mapping orientation is destination -> source:
+--
+--   input_mapping  = { "retailer": "$scope.retailer" }
+--   output_mapping = { "products": "$result.products" }
+
+CREATE TABLE IF NOT EXISTS FLOW_NODE (
+    flow_node_id         TEXT PRIMARY KEY, -- EXPLANATION: **Unique identifier for this node within its flow version (e.g. 'n-collect').**
+    fk_flow_version_id   TEXT NOT NULL     -- EXPLANATION: **Flow version this node belongs to; nodes are immutable once the version is published.**
+                         REFERENCES FLOW_VERSION(flow_version_id) ON DELETE CASCADE,
+    fk_parent_flow_node_id TEXT,             -- EXPLANATION: **For child nodes inside a foreach: the parent foreach node's id; NULL for top-level nodes.**
+    ord                  INTEGER NOT NULL DEFAULT 0 CHECK (ord >= 0), -- EXPLANATION: **Execution/display order within the same parent (0-based).**
+
+    title                TEXT NOT NULL,    -- EXPLANATION: **Human-readable name of this step shown in the UI.**
+    kind                 TEXT NOT NULL CHECK (kind IN ('api', 'hermes', 'foreach')), -- EXPLANATION: **Node type: 'api' calls an HTTP endpoint, 'hermes' creates a Hermes task, 'foreach' iterates over a list and runs child nodes per item.**
+
+    fk_binding_id        TEXT REFERENCES INTEGRATION_BINDING(binding_id) ON DELETE RESTRICT, -- EXPLANATION: **Integration binding to dispatch for api/hermes nodes; must be NULL for foreach nodes.**
+
+    input_mapping        TEXT NOT NULL DEFAULT '{}' -- EXPLANATION: **JSON object mapping input field names to $-prefixed source paths (e.g. {"product": "$item"}) resolved at dispatch time.**
+                         CHECK (
+                             json_valid(input_mapping)
+                             AND json_type(input_mapping) = 'object'
+                         ),
+    output_mapping       TEXT NOT NULL DEFAULT '{}' -- EXPLANATION: **JSON object mapping output field names to $result paths (e.g. {"products": "$result.products"}) resolved after the node completes.**
+                         CHECK (
+                             json_valid(output_mapping)
+                             AND json_type(output_mapping) = 'object'
+                         ),
+
+    -- foreach-only fields
+    items_path           TEXT,             -- EXPLANATION: **For foreach nodes: $-prefixed path that resolves to the list to iterate over (e.g. '$nodes.n-collect.output.products'); must be NULL for api/hermes nodes.**
+    item_key_path        TEXT,             -- EXPLANATION: **For foreach nodes: optional path within each item to use as the unique iteration key; defaults to the item's position if not set.**
+
+    failure_policy       TEXT NOT NULL DEFAULT 'stop' -- EXPLANATION: **What happens when this node fails: 'stop' halts the entire run, 'continue' lets sibling nodes proceed.**
+                         CHECK (failure_policy IN ('stop', 'continue')),
+
+    policy_refs          TEXT NOT NULL DEFAULT '[]' -- EXPLANATION: **JSON array of policy/rule references that gate this node's execution (reserved for future policy engine use).**
+                         CHECK (
+                             json_valid(policy_refs)
+                             AND json_type(policy_refs) = 'array'
+                         ),
+
+    created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp of node creation.**
+    updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),  -- EXPLANATION: **Timestamp of the last modification to the node definition.**
+
+    UNIQUE (fk_flow_version_id, flow_node_id),
+
+    FOREIGN KEY (fk_flow_version_id, fk_parent_flow_node_id)
+        REFERENCES FLOW_NODE(fk_flow_version_id, flow_node_id)
+        ON DELETE CASCADE,
+
+    CHECK (
+        (
+            kind IN ('api', 'hermes')
+            AND fk_binding_id IS NOT NULL
+            AND items_path IS NULL
+        )
+        OR
+        (
+            kind = 'foreach'
+            AND fk_binding_id IS NULL
+            AND items_path IS NOT NULL
+        )
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_flow_node_version
+ON FLOW_NODE(fk_flow_version_id, fk_parent_flow_node_id, ord);
+
+CREATE TRIGGER IF NOT EXISTS trg_flow_node_parent_is_foreach_insert
+BEFORE INSERT ON FLOW_NODE
+FOR EACH ROW
+WHEN NEW.fk_parent_flow_node_id IS NOT NULL
+AND COALESCE(
+    (
+        SELECT kind
+        FROM FLOW_NODE
+        WHERE flow_node_id = NEW.fk_parent_flow_node_id
+          AND fk_flow_version_id = NEW.fk_flow_version_id
+    ),
+    ''
+) <> 'foreach'
+BEGIN
+    SELECT RAISE(ABORT, 'fk_parent_flow_node_id must reference a foreach node');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_flow_node_parent_is_foreach_update
+BEFORE UPDATE OF fk_parent_flow_node_id, fk_flow_version_id ON FLOW_NODE
+FOR EACH ROW
+WHEN NEW.fk_parent_flow_node_id IS NOT NULL
+AND COALESCE(
+    (
+        SELECT kind
+        FROM FLOW_NODE
+        WHERE flow_node_id = NEW.fk_parent_flow_node_id
+          AND fk_flow_version_id = NEW.fk_flow_version_id
+    ),
+    ''
+) <> 'foreach'
+BEGIN
+    SELECT RAISE(ABORT, 'fk_parent_flow_node_id must reference a foreach node');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_flow_node_binding_kind_insert
+BEFORE INSERT ON FLOW_NODE
+FOR EACH ROW
+WHEN NEW.kind IN ('api', 'hermes')
+AND COALESCE(
+    (SELECT kind FROM INTEGRATION_BINDING WHERE binding_id = NEW.fk_binding_id),
+    ''
+) <> NEW.kind
+BEGIN
+    SELECT RAISE(ABORT, 'flow node kind does not match binding kind');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_flow_node_binding_kind_update
+BEFORE UPDATE OF kind, fk_binding_id ON FLOW_NODE
+FOR EACH ROW
+WHEN NEW.kind IN ('api', 'hermes')
+AND COALESCE(
+    (SELECT kind FROM INTEGRATION_BINDING WHERE binding_id = NEW.fk_binding_id),
+    ''
+) <> NEW.kind
+BEGIN
+    SELECT RAISE(ABORT, 'flow node kind does not match binding kind');
+END;
+
+
+-- ============================================================
+-- Flow immutability
+-- ============================================================
+-- Flow nodes may only be edited while their version is draft.
+-- Once active/archived, create a new flow version instead.
+
+CREATE TRIGGER IF NOT EXISTS trg_flow_node_draft_only_insert
+BEFORE INSERT ON FLOW_NODE
+FOR EACH ROW
+WHEN COALESCE(
+    (SELECT status FROM FLOW_VERSION WHERE flow_version_id = NEW.fk_flow_version_id),
+    ''
+) <> 'draft'
+BEGIN
+    SELECT RAISE(ABORT, 'flow nodes may only be added to draft flow versions');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_flow_node_draft_only_update
+BEFORE UPDATE ON FLOW_NODE
+FOR EACH ROW
+WHEN COALESCE(
+    (SELECT status FROM FLOW_VERSION WHERE flow_version_id = OLD.fk_flow_version_id),
+    ''
+) <> 'draft'
+OR COALESCE(
+    (SELECT status FROM FLOW_VERSION WHERE flow_version_id = NEW.fk_flow_version_id),
+    ''
+) <> 'draft'
+BEGIN
+    SELECT RAISE(ABORT, 'flow nodes may only be edited in draft flow versions');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_flow_node_draft_only_delete
+BEFORE DELETE ON FLOW_NODE
+FOR EACH ROW
+WHEN COALESCE(
+    (SELECT status FROM FLOW_VERSION WHERE flow_version_id = OLD.fk_flow_version_id),
+    ''
+) <> 'draft'
+BEGIN
+    SELECT RAISE(ABORT, 'flow nodes may only be deleted from draft flow versions');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_flow_version_no_reopen
+BEFORE UPDATE OF status ON FLOW_VERSION
+FOR EACH ROW
+WHEN OLD.status IN ('active', 'archived')
+AND NEW.status = 'draft'
+BEGIN
+    SELECT RAISE(ABORT, 'published flow versions cannot return to draft');
+END;
+
+
+-- ============================================================
+-- Runs
+-- ============================================================
+-- A run references the exact flow version it started with.
+-- Open questions are queried through NODE_STATE -> QUESTION.
+-- There is no reverse question pointer on RUN or NODE_STATE.
+
+CREATE TABLE IF NOT EXISTS RUN (
+    run_id              TEXT PRIMARY KEY,    -- EXPLANATION: **Unique identifier for this run instance (e.g. 'run-abc123').**
+    fk_flow_id          TEXT NOT NULL REFERENCES FLOW(flow_id) ON DELETE RESTRICT, -- EXPLANATION: **The flow this run executes; RESTRICT prevents deleting a flow that has runs.**
+    fk_flow_version_id  TEXT NOT NULL REFERENCES FLOW_VERSION(flow_version_id) ON DELETE RESTRICT, -- EXPLANATION: **The exact flow version snapshot this run was created from; pinned so later version edits don't affect in-flight runs.**
+
+    status              TEXT NOT NULL DEFAULT 'pending' -- EXPLANATION: **Current run lifecycle state: 'pending' (created, not started), 'running', 'paused' (waiting for a question answer), 'completed', 'failed', or 'cancelled'.**
+                        CHECK (status IN (
+                            'pending',
+                            'running',
+                            'paused',
+                            'completed',
+                            'failed',
+                            'cancelled'
+                        )),
+
+    context             TEXT NOT NULL DEFAULT '{}' -- EXPLANATION: **JSON object of user-supplied key/value pairs available to node mappings as $scope (e.g. {"retailer": "walmart"}).**
+                        CHECK (json_valid(context) AND json_type(context) = 'object'),
+
+    pause_reason        TEXT,                -- EXPLANATION: **Human-readable reason the run is paused (currently 'question' when a node needs user input); NULL when not paused.**
+    failure_summary     TEXT,                -- EXPLANATION: **Human-readable summary of why the run failed; populated from the failing node's error_message.**
+
+    created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp of run creation.**
+    started_at          TEXT,                -- EXPLANATION: **Timestamp when the run first transitioned to running; NULL if never started.**
+    finished_at         TEXT,                -- EXPLANATION: **Timestamp when the run reached a terminal state (completed, failed, or cancelled); NULL while still active.**
+    updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))  -- EXPLANATION: **Timestamp of the last state transition or modification.**
+);
+
+CREATE INDEX IF NOT EXISTS idx_run_status
+ON RUN(status);
+
+CREATE INDEX IF NOT EXISTS idx_run_flow
+ON RUN(fk_flow_id, created_at);
+
+CREATE TRIGGER IF NOT EXISTS trg_run_flow_match_insert
+BEFORE INSERT ON RUN
+FOR EACH ROW
+WHEN COALESCE(
+    (SELECT fk_flow_id FROM FLOW_VERSION WHERE flow_version_id = NEW.fk_flow_version_id),
+    ''
+) <> NEW.fk_flow_id
+BEGIN
+    SELECT RAISE(ABORT, 'run fk_flow_id must match FLOW_VERSION.fk_flow_id');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_run_flow_match_update
+BEFORE UPDATE OF fk_flow_id, fk_flow_version_id ON RUN
+FOR EACH ROW
+WHEN COALESCE(
+    (SELECT fk_flow_id FROM FLOW_VERSION WHERE flow_version_id = NEW.fk_flow_version_id),
+    ''
+) <> NEW.fk_flow_id
+BEGIN
+    SELECT RAISE(ABORT, 'run fk_flow_id must match FLOW_VERSION.fk_flow_id');
+END;
+
+
+-- ============================================================
+-- Node states
+-- ============================================================
+-- Every runtime flow-node instance receives its own stable ID.
+--
+-- Top-level node:
+--   fk_loop_iteration_id = NULL
+--
+-- Node inside a foreach iteration:
+--   fk_loop_iteration_id = the exact LOOP_ITERATION.loop_iteration_id
+--
+-- binding_snapshot preserves the effective binding configuration
+-- used when dispatching this state. It is optional until dispatch.
+
+CREATE TABLE IF NOT EXISTS NODE_STATE (
+    node_state_id        TEXT PRIMARY KEY,  -- EXPLANATION: **Unique identifier for this runtime node instance (e.g. 'ns-abc123').**
+
+    fk_run_id            TEXT NOT NULL REFERENCES RUN(run_id) ON DELETE CASCADE, -- EXPLANATION: **The run this node state belongs to; deleting the run cascades to all its node states.**
+    fk_flow_node_id      TEXT NOT NULL REFERENCES FLOW_NODE(flow_node_id) ON DELETE RESTRICT, -- EXPLANATION: **The flow node definition this state is executing; RESTRICT prevents deleting a node that has runtime states.**
+
+    fk_loop_iteration_id TEXT REFERENCES LOOP_ITERATION(loop_iteration_id) ON DELETE CASCADE, -- EXPLANATION: **For child nodes inside a foreach: the specific loop iteration this state belongs to; NULL for top-level nodes.**
+
+    status               TEXT NOT NULL DEFAULT 'pending' -- EXPLANATION: **Current execution state of this node: 'pending' (not yet dispatched), 'ready', 'dispatching', 'running', 'blocked' (waiting for a question), 'completed', 'failed', or 'cancelled'.**
+                         CHECK (status IN (
+                             'pending',
+                             'ready',
+                             'dispatching',
+                             'running',
+                             'blocked',
+                             'completed',
+                             'failed',
+                             'cancelled'
+                         )),
+
+    fk_binding_id        TEXT REFERENCES INTEGRATION_BINDING(binding_id) ON DELETE RESTRICT, -- EXPLANATION: **The integration binding used to dispatch this node; copied from the flow node definition at dispatch time.**
+    binding_snapshot     TEXT             -- EXPLANATION: **Frozen JSON copy of the binding config at dispatch time, so changes to the binding definition don't affect in-flight node states.**
+                         CHECK (
+                             binding_snapshot IS NULL
+                             OR json_valid(binding_snapshot)
+                         ),
+
+    external_ref         TEXT,              -- EXPLANATION: **Identifier returned by the external system (Hermes task ID or API poll ref) used to check status on subsequent ticks.**
+    native_state         TEXT              -- EXPLANATION: **Raw JSON state snapshot from the external system as of the last poll; preserves the exact status payload for debugging.**
+                         CHECK (native_state IS NULL OR json_valid(native_state)),
+
+    input                TEXT              -- EXPLANATION: **JSON payload that was sent to the integration after resolving the node's input_mapping against the runtime context.**
+                         CHECK (input IS NULL OR json_valid(input)),
+    raw_output           TEXT              -- EXPLANATION: **Raw JSON payload returned by the integration before output_mapping is applied.**
+                         CHECK (raw_output IS NULL OR json_valid(raw_output)),
+    output               TEXT              -- EXPLANATION: **Mapped JSON output after applying the node's output_mapping; available to downstream nodes as $nodes.<flow_node_id>.output.**
+                         CHECK (output IS NULL OR json_valid(output)),
+
+    error_code           TEXT,              -- EXPLANATION: **Machine-readable error code if the node failed (e.g. 'TIMEOUT', 'HTTP_500').**
+    error_message        TEXT,              -- EXPLANATION: **Human-readable error message if the node failed; propagated up to the run's failure_summary.**
+
+    attempt              INTEGER NOT NULL DEFAULT 0 CHECK (attempt >= 0), -- EXPLANATION: **Number of times this node has been dispatched (incremented on each tick that starts external work); ensures at-most-once dispatch per attempt.**
+
+    created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp when this node state was first materialized.**
+    started_at           TEXT,              -- EXPLANATION: **Timestamp when the node first transitioned to running.**
+    finished_at          TEXT,              -- EXPLANATION: **Timestamp when the node reached a terminal state (completed, failed, or cancelled).**
+    updated_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))  -- EXPLANATION: **Timestamp of the last state transition or poll result update.**
+);
+
+-- One top-level state per node per run.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_node_state_top_level_unique
+ON NODE_STATE(fk_run_id, fk_flow_node_id)
+WHERE fk_loop_iteration_id IS NULL;
+
+-- One child state per node per concrete loop iteration.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_node_state_iteration_unique
+ON NODE_STATE(fk_run_id, fk_flow_node_id, fk_loop_iteration_id)
+WHERE fk_loop_iteration_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_node_state_active
+ON NODE_STATE(fk_run_id, status)
+WHERE status IN ('ready', 'dispatching', 'running', 'blocked');
+
+CREATE INDEX IF NOT EXISTS idx_node_state_external_ref
+ON NODE_STATE(fk_binding_id, external_ref)
+WHERE external_ref IS NOT NULL;
+
+
+-- ============================================================
+-- Questions
+-- ============================================================
+-- A question belongs directly to one exact NodeState.
+-- This removes the v2 circular relationship:
+--
+--   QUESTION -> (run_id, node_id, iteration_key)
+--   NODE_STATE.question_id -> QUESTION
+--
+-- The owning NodeState determines the run, node and loop iteration.
+
+CREATE TABLE IF NOT EXISTS QUESTION (
+    question_id         TEXT PRIMARY KEY,    -- EXPLANATION: **Unique identifier for this question (e.g. 'q-abc123').**
+    fk_node_state_id    TEXT NOT NULL       -- EXPLANATION: **The node state that raised this question; deleting the node state cascades to its questions.**
+                        REFERENCES NODE_STATE(node_state_id) ON DELETE CASCADE,
+
+    hermes_task_id      TEXT,                -- EXPLANATION: **Hermes task ID associated with this question, used to forward the answer back to Hermes; NULL for non-Hermes questions.**
+    hermes_run_id       TEXT,                -- EXPLANATION: **Hermes run ID if the question originated from a Hermes run; NULL for non-Hermes questions.**
+
+    prompt              TEXT NOT NULL,       -- EXPLANATION: **The question text shown to the user (e.g. 'Use paid search for Fanta?').**
+    options             TEXT                -- EXPLANATION: **JSON array of allowed answer choices for the user; NULL means free-text answers are accepted.**
+                        CHECK (
+                            options IS NULL
+                            OR (
+                                json_valid(options)
+                                AND json_type(options) = 'array'
+                            )
+                        ),
+
+    answer              TEXT,                -- EXPLANATION: **The user's answer text; NULL while the question is still open.**
+    status              TEXT NOT NULL DEFAULT 'open' -- EXPLANATION: **Current question state: 'open' (awaiting answer), 'answered' (user responded), or 'dismissed' (cancelled without an answer).**
+                        CHECK (status IN ('open', 'answered', 'dismissed')),
+
+    created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp when the question was raised.**
+    answered_at         TEXT,                -- EXPLANATION: **Timestamp when the user submitted an answer; NULL while still open.**
+    dismissed_at        TEXT                 -- EXPLANATION: **Timestamp when the question was dismissed without an answer; NULL if not dismissed.**
+);
+
+CREATE INDEX IF NOT EXISTS idx_question_status
+ON QUESTION(status, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_question_one_open_per_state
+ON QUESTION(fk_node_state_id)
+WHERE status = 'open';
+
+
+-- ============================================================
+-- Foreach runtime state
+-- ============================================================
+-- A LoopState is a one-to-one runtime extension of the NodeState
+-- belonging to a foreach flow node.
+--
+-- It has no independent execution status. The foreach NodeState is
+-- canonical. Loop progress is derived from LOOP_ITERATION.
+
+CREATE TABLE IF NOT EXISTS LOOP_STATE (
+    loop_state_id        TEXT PRIMARY KEY, -- EXPLANATION: **Unique identifier for this loop state record.**
+    fk_node_state_id     TEXT NOT NULL UNIQUE -- EXPLANATION: **The foreach node state this loop state tracks; one-to-one, deleting the node state cascades to its loop state.**
+                         REFERENCES NODE_STATE(node_state_id) ON DELETE CASCADE,
+
+    initialized_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp when the loop was first initialized (items_path resolved, iterations about to be created).**
+    snapshot_completed_at TEXT,              -- EXPLANATION: **Timestamp when all loop iterations were materialized from the resolved items list; NULL if snapshot is still in progress.**
+    snapshot_metadata    TEXT              -- EXPLANATION: **JSON metadata about the snapshot (e.g. source count, filter criteria); reserved for debugging and progress reporting.**
+                         CHECK (
+                             snapshot_metadata IS NULL
+                             OR json_valid(snapshot_metadata)
+                         )
+);
+
+CREATE TABLE IF NOT EXISTS LOOP_ITERATION (
+    loop_iteration_id  TEXT PRIMARY KEY,     -- EXPLANATION: **Unique identifier for this iteration instance (e.g. 'li-abc123').**
+    fk_loop_state_id   TEXT NOT NULL         -- EXPLANATION: **Parent loop state this iteration belongs to; deleting the loop state cascades to all iterations.**
+                       REFERENCES LOOP_STATE(loop_state_id) ON DELETE CASCADE,
+
+    iteration_key      TEXT NOT NULL,        -- EXPLANATION: **Unique key for this item within the loop (e.g. 'sku-pepsi'), used for deduplication and idempotent iteration creation.**
+    position           INTEGER NOT NULL CHECK (position >= 0), -- EXPLANATION: **Zero-based ordinal position of this item in the original list; determines processing order.**
+
+    item               TEXT NOT NULL CHECK (json_valid(item)), -- EXPLANATION: **JSON copy of the actual item value from the resolved list at snapshot time; available to child node mappings as $item.**
+
+    status             TEXT NOT NULL DEFAULT 'pending' -- EXPLANATION: **Current iteration state: 'pending', 'running', 'blocked' (a child node raised a question), 'completed', 'failed', or 'cancelled'.**
+                       CHECK (status IN (
+                           'pending',
+                           'running',
+                           'blocked',
+                           'completed',
+                           'failed',
+                           'cancelled'
+                       )),
+
+    output             TEXT CHECK (output IS NULL OR json_valid(output)), -- EXPLANATION: **JSON object of collected child node outputs keyed by child flow_node_id; aggregates per-item results for the parent foreach.**
+    error_summary      TEXT,                 -- EXPLANATION: **Human-readable error summary if any child node in this iteration failed.**
+
+    created_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')), -- EXPLANATION: **Timestamp when this iteration was created during the foreach snapshot.**
+    updated_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),  -- EXPLANATION: **Timestamp of the last status change for this iteration.**
+
+    UNIQUE (fk_loop_state_id, iteration_key),
+    UNIQUE (fk_loop_state_id, position)
+);
+
+CREATE INDEX IF NOT EXISTS idx_loop_iteration_progress
+ON LOOP_ITERATION(fk_loop_state_id, status, position);
+
+
+-- ============================================================
+-- Runtime integrity triggers
+-- ============================================================
+
+-- A NodeState must use a FlowNode from the run's exact flow version.
+
+CREATE TRIGGER IF NOT EXISTS trg_node_state_flow_version_insert
+BEFORE INSERT ON NODE_STATE
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM RUN r
+    JOIN FLOW_NODE n
+      ON n.flow_node_id = NEW.fk_flow_node_id
+     AND n.fk_flow_version_id = r.fk_flow_version_id
+    WHERE r.run_id = NEW.fk_run_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'node_state node must belong to the run flow version');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_node_state_flow_version_update
+BEFORE UPDATE OF fk_run_id, fk_flow_node_id ON NODE_STATE
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM RUN r
+    JOIN FLOW_NODE n
+      ON n.flow_node_id = NEW.fk_flow_node_id
+     AND n.fk_flow_version_id = r.fk_flow_version_id
+    WHERE r.run_id = NEW.fk_run_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'node_state node must belong to the run flow version');
+END;
+
+-- Top-level flow nodes must not point at a LoopIteration.
+-- Child flow nodes must point at the exact iteration of their parent foreach node.
+
+CREATE TRIGGER IF NOT EXISTS trg_node_state_iteration_placement_insert
+BEFORE INSERT ON NODE_STATE
+FOR EACH ROW
+WHEN (
+    (
+        (SELECT fk_parent_flow_node_id FROM FLOW_NODE WHERE flow_node_id = NEW.fk_flow_node_id) IS NULL
+        AND NEW.fk_loop_iteration_id IS NOT NULL
+    )
+    OR
+    (
+        (SELECT fk_parent_flow_node_id FROM FLOW_NODE WHERE flow_node_id = NEW.fk_flow_node_id) IS NOT NULL
+        AND NEW.fk_loop_iteration_id IS NULL
+    )
+    OR
+    (
+        NEW.fk_loop_iteration_id IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1
+            FROM LOOP_ITERATION li
+            JOIN LOOP_STATE ls
+              ON ls.loop_state_id = li.fk_loop_state_id
+            JOIN NODE_STATE parent_state
+              ON parent_state.node_state_id = ls.fk_node_state_id
+            JOIN FLOW_NODE child_node
+              ON child_node.flow_node_id = NEW.fk_flow_node_id
+            WHERE li.loop_iteration_id = NEW.fk_loop_iteration_id
+              AND parent_state.fk_run_id = NEW.fk_run_id
+              AND parent_state.fk_flow_node_id = child_node.fk_parent_flow_node_id
+        )
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'node_state loop iteration does not match its parent foreach node');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_node_state_iteration_placement_update
+BEFORE UPDATE OF fk_run_id, fk_flow_node_id, fk_loop_iteration_id ON NODE_STATE
+FOR EACH ROW
+WHEN (
+    (
+        (SELECT fk_parent_flow_node_id FROM FLOW_NODE WHERE flow_node_id = NEW.fk_flow_node_id) IS NULL
+        AND NEW.fk_loop_iteration_id IS NOT NULL
+    )
+    OR
+    (
+        (SELECT fk_parent_flow_node_id FROM FLOW_NODE WHERE flow_node_id = NEW.fk_flow_node_id) IS NOT NULL
+        AND NEW.fk_loop_iteration_id IS NULL
+    )
+    OR
+    (
+        NEW.fk_loop_iteration_id IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1
+            FROM LOOP_ITERATION li
+            JOIN LOOP_STATE ls
+              ON ls.loop_state_id = li.fk_loop_state_id
+            JOIN NODE_STATE parent_state
+              ON parent_state.node_state_id = ls.fk_node_state_id
+            JOIN FLOW_NODE child_node
+              ON child_node.flow_node_id = NEW.fk_flow_node_id
+            WHERE li.loop_iteration_id = NEW.fk_loop_iteration_id
+              AND parent_state.fk_run_id = NEW.fk_run_id
+              AND parent_state.fk_flow_node_id = child_node.fk_parent_flow_node_id
+        )
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'node_state loop iteration does not match its parent foreach node');
+END;
+
+-- Runtime binding must match the action FlowNode binding.
+-- Foreach states must have no binding.
+
+CREATE TRIGGER IF NOT EXISTS trg_node_state_binding_insert
+BEFORE INSERT ON NODE_STATE
+FOR EACH ROW
+WHEN (
+    (
+        (SELECT kind FROM FLOW_NODE WHERE flow_node_id = NEW.fk_flow_node_id) = 'foreach'
+        AND NEW.fk_binding_id IS NOT NULL
+    )
+    OR
+    (
+        (SELECT kind FROM FLOW_NODE WHERE flow_node_id = NEW.fk_flow_node_id) IN ('api', 'hermes')
+        AND NEW.fk_binding_id IS NOT NULL
+        AND NEW.fk_binding_id <> (
+            SELECT fk_binding_id FROM FLOW_NODE WHERE flow_node_id = NEW.fk_flow_node_id
+        )
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'node_state binding must match the flow node binding');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_node_state_binding_update
+BEFORE UPDATE OF fk_flow_node_id, fk_binding_id ON NODE_STATE
+FOR EACH ROW
+WHEN (
+    (
+        (SELECT kind FROM FLOW_NODE WHERE flow_node_id = NEW.fk_flow_node_id) = 'foreach'
+        AND NEW.fk_binding_id IS NOT NULL
+    )
+    OR
+    (
+        (SELECT kind FROM FLOW_NODE WHERE flow_node_id = NEW.fk_flow_node_id) IN ('api', 'hermes')
+        AND NEW.fk_binding_id IS NOT NULL
+        AND NEW.fk_binding_id <> (
+            SELECT fk_binding_id FROM FLOW_NODE WHERE flow_node_id = NEW.fk_flow_node_id
+        )
+    )
+)
+BEGIN
+    SELECT RAISE(ABORT, 'node_state binding must match the flow node binding');
+END;
+
+-- A LoopState may only extend a NodeState whose FlowNode is foreach.
+
+CREATE TRIGGER IF NOT EXISTS trg_loop_state_foreach_insert
+BEFORE INSERT ON LOOP_STATE
+FOR EACH ROW
+WHEN COALESCE(
+    (
+        SELECT n.kind
+        FROM NODE_STATE s
+        JOIN FLOW_NODE n ON n.flow_node_id = s.fk_flow_node_id
+        WHERE s.node_state_id = NEW.fk_node_state_id
+    ),
+    ''
+) <> 'foreach'
+BEGIN
+    SELECT RAISE(ABORT, 'loop_state must reference a foreach node_state');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_loop_state_foreach_update
+BEFORE UPDATE OF fk_node_state_id ON LOOP_STATE
+FOR EACH ROW
+WHEN COALESCE(
+    (
+        SELECT n.kind
+        FROM NODE_STATE s
+        JOIN FLOW_NODE n ON n.flow_node_id = s.fk_flow_node_id
+        WHERE s.node_state_id = NEW.fk_node_state_id
+    ),
+    ''
+) <> 'foreach'
+BEGIN
+    SELECT RAISE(ABORT, 'loop_state must reference a foreach node_state');
+END;
+
+
+-- ============================================================
+-- Useful read views
+-- ============================================================
+
+CREATE VIEW IF NOT EXISTS loop_progress AS
+SELECT
+    ls.loop_state_id,
+    ls.fk_node_state_id,
+    COUNT(li.loop_iteration_id) AS total_items,
+    SUM(CASE WHEN li.status = 'completed' THEN 1 ELSE 0 END) AS completed_items,
+    SUM(CASE WHEN li.status = 'failed' THEN 1 ELSE 0 END) AS failed_items,
+    SUM(CASE WHEN li.status = 'blocked' THEN 1 ELSE 0 END) AS blocked_items,
+    SUM(CASE WHEN li.status = 'running' THEN 1 ELSE 0 END) AS running_items,
+    SUM(CASE WHEN li.status = 'pending' THEN 1 ELSE 0 END) AS pending_items
+FROM LOOP_STATE ls
+LEFT JOIN LOOP_ITERATION li
+  ON li.fk_loop_state_id = ls.loop_state_id
+GROUP BY ls.loop_state_id, ls.fk_node_state_id;
+
+CREATE VIEW IF NOT EXISTS open_questions AS
+SELECT
+    q.question_id,
+    q.fk_node_state_id,
+    s.fk_run_id,
+    s.fk_flow_node_id,
+    li.iteration_key,
+    q.hermes_task_id,
+    q.hermes_run_id,
+    q.prompt,
+    q.options,
+    q.created_at
+FROM QUESTION q
+JOIN NODE_STATE s
+  ON s.node_state_id = q.fk_node_state_id
+LEFT JOIN LOOP_ITERATION li
+  ON li.loop_iteration_id = s.fk_loop_iteration_id
+WHERE q.status = 'open';
+
+CREATE VIEW IF NOT EXISTS node_state_context AS
+SELECT
+    s.node_state_id,
+    s.fk_run_id,
+    s.fk_flow_node_id,
+    n.title AS node_title,
+    n.kind AS node_kind,
+    s.status,
+    s.fk_loop_iteration_id,
+    li.iteration_key,
+    li.position AS iteration_position,
+    s.fk_binding_id,
+    s.external_ref,
+    s.error_code,
+    s.error_message
+FROM NODE_STATE s
+JOIN FLOW_NODE n
+  ON n.flow_node_id = s.fk_flow_node_id
+LEFT JOIN LOOP_ITERATION li
+  ON li.loop_iteration_id = s.fk_loop_iteration_id;
+
+
+-- ============================================================
+-- Example shapes
+-- ============================================================
+--
+-- Definition:
+--
+--   foreach-products       kind=foreach, parent=NULL
+--   fetch-product-data     kind=api,     parent=foreach-products
+--   research-product       kind=hermes,  parent=foreach-products
+--   save-product-result    kind=api,     parent=foreach-products
+--
+-- Runtime:
+--
+--   NODE_STATE:
+--     ns-loop       run-185 / foreach-products / fk_loop_iteration_id=NULL
+--
+--   LOOP_STATE:
+--     ls-products   fk_node_state_id=ns-loop
+--
+--   LOOP_ITERATION:
+--     li-pepsi      ls-products / iteration_key=sku-pepsi
+--     li-fanta      ls-products / iteration_key=sku-fanta
+--
+--   child NODE_STATE:
+--     ns-fetch-fanta     node=fetch-product-data
+--                        fk_loop_iteration_id=li-fanta
+--
+--     ns-research-fanta  node=research-product
+--                        fk_loop_iteration_id=li-fanta
+--
+--   QUESTION:
+--     q2                  fk_node_state_id=ns-research-fanta
+--
+-- This makes the runtime hierarchy explicit rather than reconstructing it from
+-- repeated fk_run_id + fk_flow_node_id + iteration_key text columns.
