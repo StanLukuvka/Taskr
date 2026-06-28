@@ -505,6 +505,82 @@ class TaskrRepository:
         self.conn.commit()
         return self.load_node_state(state["node_state_id"])
 
+    def reset_node_state(self, node_state_id: str) -> dict[str, Any]:
+        """Reset a top-level node state to pending, clearing runtime results.
+
+        Only top-level node states (fk_loop_iteration_id IS NULL) are allowed.
+        Sets status to 'pending', attempt to 0, and clears timing, errors, and
+        external references while preserving the binding reference and snapshot.
+        """
+        self.conn.execute(
+            """
+            UPDATE NODE_STATE
+            SET status = 'pending',
+                attempt = 0,
+                started_at = NULL,
+                finished_at = NULL,
+                external_ref = NULL,
+                native_state = NULL,
+                input = NULL,
+                raw_output = NULL,
+                output = NULL,
+                error_code = NULL,
+                error_message = NULL,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE node_state_id = ? AND fk_loop_iteration_id IS NULL
+            """,
+            (node_state_id,),
+        )
+        self.conn.commit()
+        return self.load_node_state(node_state_id)
+
+    def copy_run_node_state(self, source_run_id: str, target_run_id: str, flow_node_id: str) -> dict[str, Any] | None:
+        """Copy a completed top-level action node state from one run to another.
+
+        Only copies if the source node state is completed and the flow node is a
+        top-level action node (kind IN ('api', 'hermes')). The target's pending
+        node state for the same flow node is replaced with the source state.
+        """
+        source = self._one(
+            """
+            SELECT ns.* FROM NODE_STATE ns
+            JOIN FLOW_NODE fn ON fn.flow_node_id = ns.fk_flow_node_id
+            WHERE ns.fk_run_id = ? AND ns.fk_flow_node_id = ?
+              AND ns.fk_loop_iteration_id IS NULL
+              AND fn.fk_parent_flow_node_id IS NULL
+              AND fn.kind IN ('api', 'hermes')
+              AND ns.status = 'completed'
+            """,
+            (source_run_id, flow_node_id),
+        )
+        if not source:
+            return None
+
+        # Remove the pending placeholder created by create_run for this node.
+        self.conn.execute(
+            "DELETE FROM NODE_STATE WHERE fk_run_id = ? AND fk_flow_node_id = ? AND fk_loop_iteration_id IS NULL",
+            (target_run_id, flow_node_id),
+        )
+
+        new_id = f"ns-{uuid.uuid4().hex[:12]}"
+        self.conn.execute(
+            """
+            INSERT INTO NODE_STATE (
+                node_state_id, fk_run_id, fk_flow_node_id, fk_loop_iteration_id, status,
+                fk_binding_id, binding_snapshot, input, raw_output, output,
+                attempt, started_at, finished_at, created_at
+            )
+            SELECT ?, ?, ns.fk_flow_node_id, NULL, 'completed',
+                   ns.fk_binding_id, ns.binding_snapshot, ns.input, ns.raw_output, ns.output,
+                   ns.attempt, ns.started_at, ns.finished_at, ns.created_at
+            FROM NODE_STATE ns
+            WHERE ns.node_state_id = ?
+            """,
+            (new_id, target_run_id, source["node_state_id"]),
+        )
+        self.conn.commit()
+        return self.load_node_state(new_id)
+
     # ── Loop state & iterations ──────────────────────────────────────────────────
 
     def get_loop_state(self, node_state_id: str) -> dict[str, Any] | None:
