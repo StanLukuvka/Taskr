@@ -114,3 +114,9 @@ class TaskrRepository:
         from app.flow.seed import seed_demo_data
         seed_demo_data(self)
 
+    # ── Flow CRUD ──────────────────────────────────────────────────
+
+    def load_all_flows(self) -> list[dict[str, Any]]:
+        """Return every flow in the system, ordered by title."""
+        return self._all("SELECT * FROM FLOW ORDER BY title, slug")
+
