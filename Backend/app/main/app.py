@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -16,8 +17,8 @@ from app.errors.handlers import register_handlers
 
 The single entry point for the Taskr HTTP API. It wires together the
 routers, CORS, startup schema bootstrap, and the static frontend mount.
-Endpoint logic lives in the app.endpoints subpackage; this module only
-assembles the application.
+Endpoint logic lives in the app.endpoint and app.flow subpackages; this
+module only assembles the application.
 """
 
 OPENAPI_TAGS = [
@@ -47,7 +48,19 @@ OPENAPI_TAGS = [
     },
 ]
 
-app = FastAPI(title="Taskr", openapi_tags=OPENAPI_TAGS)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize the application database schema on startup.
+
+    Ensures that all tables required by the repository layer exist before
+    the first request is handled.
+    """
+    TaskrRepository.apply_schema()
+    yield
+
+
+app = FastAPI(title="Taskr", openapi_tags=OPENAPI_TAGS, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,17 +75,6 @@ app.include_router(runs_router)
 app.include_router(node_states_router)
 
 register_handlers(app)
-
-
-@app.on_event("startup")
-def on_startup():
-    """Initialize the application database schema on startup.
-
-    This event handler runs once when the FastAPI process starts. It ensures
-    that all tables required by the repository layer exist before the first
-    request is handled.
-    """
-    TaskrRepository.apply_schema()
 
 
 _frontend_path = Path(__file__).resolve().parent.parent.parent.parent / "Frontend" / "dist"
