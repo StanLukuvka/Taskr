@@ -177,3 +177,10 @@ class TaskrRepository:
         )
         self.conn.commit()
         return self.load_flow_version(flow_version_id)
+    
+    def load_active_flow_version(self, flow_id: str) -> dict[str, Any] | None:
+        """Fetch the currently active flow version for a flow."""
+        return self._one(
+            "SELECT * FROM FLOW_VERSION WHERE fk_flow_id = ? AND status = 'active' ORDER BY version DESC LIMIT 1",
+            (flow_id,),
+        )
