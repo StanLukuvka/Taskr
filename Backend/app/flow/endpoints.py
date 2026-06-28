@@ -89,3 +89,46 @@ def create_flow_node(flow_version_id: str, body: FlowNodeCreateRequest):
     )
     return node
 
+
+@router.patch(
+    "/flow_nodes/{node_id}", response_model=FlowNodeResponse, tags=["Flow Nodes"]
+)
+def update_flow_node(node_id: str, body: FlowNodeUpdateRequest):
+    """Update an existing flow node.
+
+    Only fields provided in the body are updated. The flow version must be
+    in draft status; published or archived versions are immutable.
+
+    Args:
+        node_id: The ID of the flow node to update.
+        body: The update payload containing only fields to change.
+
+    Returns:
+        The updated flow node record.
+
+    Raises:
+        FlowNodeNotFoundError: 404 if the node does not exist.
+        FlowVersionNotFoundError: 404 if the flow version does not exist.
+        FlowVersionNotDraftError: 400 if the flow version is not draft.
+    """
+    repo = _get_repo()
+    node = repo.load_flow_node(node_id)
+    if node is None:
+        raise FlowNodeNotFoundError(f"Flow node {node_id} not found", entity_id=node_id)
+    # USER: Concurrency issue here. potential running condition here  
+    version = repo._one(
+        "SELECT * FROM FLOW_VERSION WHERE flow_version_id = ?", (node["fk_flow_version_id"],)
+    )
+    if version is None:
+        raise FlowVersionNotFoundError(
+            f"Flow version {node['fk_flow_version_id']} not found",
+            entity_id=node["fk_flow_version_id"],
+        )
+    if version["status"] != "draft":
+        raise FlowVersionNotDraftError(
+            f"Flow version {node['fk_flow_version_id']} is not in draft status",
+            entity_id=node["fk_flow_version_id"],
+        )
+
+    updates = body.model_dump(exclude_none=True)
+    return repo.update_flow_node(node_id, updates)
