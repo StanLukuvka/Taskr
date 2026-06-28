@@ -56,6 +56,8 @@ def create_flow_node(flow_version_id: str, body: FlowNodeCreateRequest):
         FlowVersionNotFoundError: 404 if the flow version does not exist.
         FlowVersionNotDraftError: 400 if it is not in draft status.
     """
+
+    # USER: Concurrency issue here. potential running condition here  
     repo = _get_repo()
 
     version = repo._one(
