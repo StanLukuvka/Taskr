@@ -49,3 +49,24 @@ class TaskrRepository:
         """Run a SELECT and return every row as a dict."""
         rows = self.conn.execute(query, params).fetchall()
         return [self._row_to_dict(row) for row in rows]
+
+    def _row_to_dict(self, row: sqlite3.Row, table_hint: str | None = None) -> dict[str, Any]:
+        """Convert a sqlite3.Row to a Python dict and auto-parse JSON columns.
+
+        If table_hint is provided, only the JSON columns for that table are
+        parsed. If None, every known JSON column is attempted (safe because
+        json.loads only runs on string values).
+        """
+        data = dict(row)
+        tables = [table_hint] if table_hint else _JSON_FIELDS.keys()
+        for table in tables:
+            for key in _JSON_FIELDS.get(table, set()):
+                if key in data and isinstance(data[key], str):
+                    data[key] = json.loads(data[key])
+        return data
+
+    def _json(self, value: Any) -> str | None:
+        """Serialize a value to JSON, or return None for None."""
+        if value is None:
+            return None
+        return json.dumps(value)
