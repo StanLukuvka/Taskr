@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.endpoint.bindings import router as bindings_router
 from app.flow.endpoints import router as flows_router
 from app.endpoint.node_states import router as node_states_router
 from app.endpoint.runs import router as runs_router
@@ -46,6 +47,10 @@ OPENAPI_TAGS = [
         "name": "Flow Nodes",
         "description": "Create and inspect nodes inside a flow version.",
     },
+    {
+        "name": "Bindings",
+        "description": "Create and manage integration bindings for external API and Hermes connections.",
+    },
 ]
 
 
@@ -80,6 +85,7 @@ app.add_middleware(
 app.include_router(flows_router)
 app.include_router(runs_router)
 app.include_router(node_states_router)
+app.include_router(bindings_router)
 
 register_handlers(app)
 
