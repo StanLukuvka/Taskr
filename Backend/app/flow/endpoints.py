@@ -38,6 +38,8 @@ router = APIRouter()
     "/flow_versions/{flow_version_id}/flow_nodes",
     response_model=FlowNodeResponse,
     tags=["Flow Nodes"],
+    operation_id="flow_nodes_create_flow_node",
+    summary="Create a flow node",
 )
 def create_flow_node(flow_version_id: str, body: FlowNodeCreateRequest):
     """Create a new flow node within a flow version.
@@ -93,7 +95,11 @@ def create_flow_node(flow_version_id: str, body: FlowNodeCreateRequest):
 
 
 @router.patch(
-    "/flow_nodes/{node_id}", response_model=FlowNodeResponse, tags=["Flow Nodes"]
+    "/flow_nodes/{node_id}",
+    response_model=FlowNodeResponse,
+    tags=["Flow Nodes"],
+    operation_id="flow_nodes_update_flow_node",
+    summary="Update a flow node",
 )
 def update_flow_node(node_id: str, body: FlowNodeUpdateRequest):
     """Update an existing flow node.
@@ -136,7 +142,12 @@ def update_flow_node(node_id: str, body: FlowNodeUpdateRequest):
     return repo.update_flow_node(node_id, updates)
 
 
-@router.delete("/flow_nodes/{node_id}", tags=["Flow Nodes"])
+@router.delete(
+    "/flow_nodes/{node_id}",
+    tags=["Flow Nodes"],
+    operation_id="flow_nodes_delete_flow_node",
+    summary="Delete a flow node",
+)
 def delete_flow_node(node_id: str):
     """Delete a flow node and its children.
 
@@ -181,7 +192,13 @@ def delete_flow_node(node_id: str):
 
 # ── Flow & version management ───────────────────────────────
 
-@router.post("/flows", response_model=FlowResponseFull, tags=["Flows"])
+@router.post(
+    "/flows",
+    response_model=FlowResponseFull,
+    tags=["Flows"],
+    operation_id="flows_create_flow",
+    summary="Create a flow",
+)
 def create_flow(body: FlowCreateRequest):
     """Create a new flow.
 
@@ -207,6 +224,8 @@ def create_flow(body: FlowCreateRequest):
     "/flows/{flow_id}/versions",
     response_model=FlowVersionCreateResponse,
     tags=["Flow Versions"],
+    operation_id="flow_versions_create_flow_version",
+    summary="Create a flow version",
 )
 def create_flow_version(flow_id: str):
     """Create a new draft flow version for a flow.
@@ -234,6 +253,8 @@ def create_flow_version(flow_id: str):
     "/flow_versions/{flow_version_id}/publish",
     response_model=FlowVersionCreateResponse,
     tags=["Flow Versions"],
+    operation_id="flow_versions_publish_flow_version",
+    summary="Publish a flow version",
 )
 def publish_flow_version(flow_version_id: str):
     """Publish a draft flow version, making it the active version.
@@ -254,7 +275,13 @@ def publish_flow_version(flow_version_id: str):
     return repo.publish_flow_version(flow_version_id)
 
 
-@router.get("/flows", response_model=list[FlowResponse], tags=["Flows"])
+@router.get(
+    "/flows",
+    response_model=list[FlowResponse],
+    tags=["Flows"],
+    operation_id="flows_list_flows",
+    summary="List flows",
+)
 def list_flows():
     """List all flows.
 
@@ -271,6 +298,8 @@ def list_flows():
     "/flow_versions/{flow_version_id}",
     response_model=FlowVersionResponse,
     tags=["Flow Versions"],
+    operation_id="flow_versions_get_flow_version",
+    summary="Get a flow version",
 )
 def get_flow_version(flow_version_id: str):
     """Retrieve a flow version and its full node tree.
