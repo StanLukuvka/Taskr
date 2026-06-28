@@ -40,6 +40,18 @@ class TaskrRepository:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
 
+    @staticmethod
+    def get_connection() -> sqlite3.Connection:
+        """Open the SQLite DB, enable WAL and foreign keys, and apply the schema if needed."""
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.row_factory = sqlite3.Row
+        if not TaskrRepository._schema_exists(conn):
+            conn.executescript(SCHEMA_PATH.read_text())
+            conn.commit()
+        return conn
+
     def _one(self, query: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
         """Run a SELECT and return a single row, or None."""
         row = self.conn.execute(query, params).fetchone()
