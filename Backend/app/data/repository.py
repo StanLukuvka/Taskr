@@ -415,6 +415,174 @@ class TaskrRepository:
         binding.update(config)
         return binding
 
+    def create_binding(
+        self,
+        kind: str,
+        display_title: str,
+        *,
+        is_enabled: bool = True,
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Insert a new INTEGRATION_BINDING row and its kind-specific config row."""
+        # USER: Should we be worried about BINDING being inserted multuple times?
+        binding_id = f"b-{uuid.uuid4().hex[:12]}"
+        self.conn.execute(
+            """
+            INSERT INTO INTEGRATION_BINDING (binding_id, kind, display_title, is_enabled)
+            VALUES (?, ?, ?, ?)
+            """,
+            (binding_id, kind, display_title, int(is_enabled)),
+        )
+        if kind == "api":
+            self.conn.execute(
+                """
+                INSERT INTO API_BINDING_CONFIG (
+                    fk_binding_id, method, url_template, auth_ref, headers, request_mode,
+                    completion_mode, external_ref_path, status_method, status_url_template,
+                    status_path, success_values, failure_values, result_path
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    binding_id,
+                    config["method"],
+                    config["url_template"],
+                    config.get("auth_ref"),
+                    self._json(config.get("headers") or {}),
+                    config.get("request_mode", "json"),
+                    config.get("completion_mode", "response"),
+                    config.get("external_ref_path"),
+                    config.get("status_method", "GET"),
+                    config.get("status_url_template"),
+                    config.get("status_path"),
+                    self._json(config.get("success_values") or ["success", "completed"]),
+                    self._json(config.get("failure_values") or ["failure", "failed", "cancelled"]),
+                    config.get("result_path"),
+                ),
+            )
+        elif kind == "hermes":
+            self.conn.execute(
+                """
+                INSERT INTO HERMES_BINDING_CONFIG (
+                    fk_binding_id, board, profile, task_title_template, task_body_template,
+                    skills, tenant_template, workspace_template, goal_mode
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    binding_id,
+                    config["board"],
+                    config.get("profile"),
+                    config["task_title_template"],
+                    config["task_body_template"],
+                    self._json(config.get("skills") or []),
+                    config.get("tenant_template"),
+                    config.get("workspace_template"),
+                    int(config.get("goal_mode", False)),
+                ),
+            )
+        else:
+            raise ValueError(f"unsupported binding kind: {kind}")
+        self.conn.commit()
+        binding = self.load_binding(binding_id)
+        assert binding is not None
+        return binding
+
+    def update_binding(
+        self,
+        binding_id: str,
+        *,
+        display_title: str | None = None,
+        is_enabled: bool | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Update a binding and optionally replace its kind-specific config.
+
+        The endpoint forbids changing `kind`, so this method only handles
+        same-kind updates. When `config` is supplied, the child config row is
+        deleted and re-inserted to keep the update simple and transactional.
+        """
+        existing = self.load_binding(binding_id)
+        if not existing:
+            from app.errors.binding import BindingNotFoundError
+
+            raise BindingNotFoundError(entity_id=binding_id)
+
+        kind = existing["kind"]
+        set_parts = []
+        values: list[Any] = []
+        if display_title is not None:
+            set_parts.append("display_title = ?")
+            values.append(display_title)
+        if is_enabled is not None:
+            set_parts.append("is_enabled = ?")
+            values.append(int(is_enabled))
+        set_parts.append("updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')")
+        values.append(binding_id)
+        self.conn.execute(
+            f"UPDATE INTEGRATION_BINDING SET {', '.join(set_parts)} WHERE binding_id = ?",
+            tuple(values),
+        )
+
+        if config is not None:
+            if kind == "api":
+                self.conn.execute("DELETE FROM API_BINDING_CONFIG WHERE fk_binding_id = ?", (binding_id,))
+                self.conn.execute(
+                    """
+                    INSERT INTO API_BINDING_CONFIG (
+                        fk_binding_id, method, url_template, auth_ref, headers, request_mode,
+                        completion_mode, external_ref_path, status_method, status_url_template,
+                        status_path, success_values, failure_values, result_path
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        binding_id,
+                        config["method"],
+                        config["url_template"],
+                        config.get("auth_ref"),
+                        self._json(config.get("headers") or {}),
+                        config.get("request_mode", "json"),
+                        config.get("completion_mode", "response"),
+                        config.get("external_ref_path"),
+                        config.get("status_method", "GET"),
+                        config.get("status_url_template"),
+                        config.get("status_path"),
+                        self._json(config.get("success_values") or ["success", "completed"]),
+                        self._json(config.get("failure_values") or ["failure", "failed", "cancelled"]),
+                        config.get("result_path"),
+                    ),
+                )
+            elif kind == "hermes":
+                self.conn.execute("DELETE FROM HERMES_BINDING_CONFIG WHERE fk_binding_id = ?", (binding_id,))
+                self.conn.execute(
+                    """
+                    INSERT INTO HERMES_BINDING_CONFIG (
+                        fk_binding_id, board, profile, task_title_template, task_body_template,
+                        skills, tenant_template, workspace_template, goal_mode
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        binding_id,
+                        config["board"],
+                        config.get("profile"),
+                        config["task_title_template"],
+                        config["task_body_template"],
+                        self._json(config.get("skills") or []),
+                        config.get("tenant_template"),
+                        config.get("workspace_template"),
+                        int(config.get("goal_mode", False)),
+                    ),
+                )
+            else:
+                raise ValueError(f"unsupported binding kind: {kind}")
+
+        self.conn.commit()
+        binding = self.load_binding(binding_id)
+        assert binding is not None
+        return binding
+
     def get_or_create_node_state(self, run_id: str, node_id: str, loop_iteration_id: str | None) -> dict[str, Any]:
         """Find the node_state for this (run, node, iteration), or create a pending one.
 
