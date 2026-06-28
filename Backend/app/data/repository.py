@@ -369,3 +369,20 @@ class TaskrRepository:
         self.conn.execute("DELETE FROM FLOW_NODE WHERE flow_node_id = ?", (node_id,))
         self.conn.commit()
 
+    # ── Binding management ──────────────────────────────────────────────────
+
+    def load_binding(self, binding_id: str) -> dict[str, Any] | None:
+        """Fetch a binding plus its kind-specific configuration.
+
+        A binding is the reusable configuration that tells a node how to talk to
+        an external system. The generic part is in integration_bindings; the
+        kind-specific part (URL, method, Hermes board, etc.) is joined from
+        api_binding_config or hermes_binding_config.
+        """
+        binding = self._one("SELECT * FROM INTEGRATION_BINDING WHERE binding_id = ?", (binding_id,))
+        if not binding:
+            return None
+        config_table = "API_BINDING_CONFIG" if binding["kind"] == "api" else "HERMES_BINDING_CONFIG"
+        config = self._one(f"SELECT * FROM {config_table} WHERE fk_binding_id = ?", (binding_id,)) or {}
+        binding.update(config)
+        return binding
