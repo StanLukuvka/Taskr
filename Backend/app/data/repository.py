@@ -120,3 +120,18 @@ class TaskrRepository:
         """Return every flow in the system, ordered by title."""
         return self._all("SELECT * FROM FLOW ORDER BY title, slug")
 
+    # ── Run lifecycle ──────────────────────────────────────────────────
+
+    def load_all_runs(self) -> list[dict[str, Any]]:
+        """Return every run, ordered by creation time."""
+        return self._all("SELECT * FROM RUN ORDER BY created_at, run_id")
+
+    def load_flow(self, flow_id: str) -> dict[str, Any] | None:
+        """Fetch a single flow by id."""
+        row = self.conn.execute("SELECT * FROM FLOW WHERE flow_id = ?", (flow_id,)).fetchone()
+        return self._row_to_dict(row, "FLOW") if row else None
+
+    def load_flow_by_slug(self, slug: str) -> dict[str, Any] | None:
+        """Fetch a flow by its URL-friendly slug."""
+        return self._one("SELECT * FROM FLOW WHERE slug = ?", (slug,))
+
