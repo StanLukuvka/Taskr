@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.errors.binding import BindingKindMismatchError
 from app.data.repository import TaskrRepository
 
 """Response builder functions for Taskr API endpoints.
@@ -62,6 +63,205 @@ def build_run_response(run: dict[str, Any], repo: TaskrRepository) -> dict[str, 
         "created_at": run.get("created_at"),
         "started_at": run.get("started_at"),
         "finished_at": run.get("finished_at"),
-        "node_states": states,
+        "node_states": [build_node_state_public(s) for s in states],
     }
 
+
+def build_node_state_public(state: dict[str, Any]) -> dict[str, Any]:
+    """Build a public representation of a node state record.
+
+    This helper filters the raw node state record down to the fields that are
+    safe to expose over the API. Optional fields use .get() so that missing
+    values are returned as None rather than raising KeyError.
+
+    Args:
+        state: The raw node state record from the repository.
+
+    Returns:
+        A dictionary with the public node state fields.
+    """
+    return {
+        "id": state["node_state_id"],
+        "run_id": state["fk_run_id"],
+        "node_id": state["fk_flow_node_id"],
+        "node_title": state.get("node_title"),
+        "node_kind": state.get("node_kind"),
+        "loop_iteration_id": state.get("fk_loop_iteration_id"),
+        "status": state["status"],
+        "binding_id": state.get("fk_binding_id"),
+        "binding_snapshot": state.get("binding_snapshot"),
+        "external_ref": state.get("external_ref"),
+        "input": state.get("input"),
+        "raw_output": state.get("raw_output"),
+        "output": state.get("output"),
+        "error_code": state.get("error_code"),
+        "error_message": state.get("error_message"),
+        "attempt": state.get("attempt", 0),
+        "created_at": state.get("created_at"),
+        "started_at": state.get("started_at"),
+        "finished_at": state.get("finished_at"),
+        "updated_at": state.get("updated_at"),
+    }
+
+
+# ── Flow version & node tree builders ───────────────────────
+
+def build_flow_version_response(
+    version: dict[str, Any], repo: TaskrRepository
+) -> dict[str, Any]:
+    """Build a public FlowVersionResponse dictionary with a nested node tree.
+
+    Recursively assembles the node tree by loading top-level nodes and then
+    descending into each node's children.
+
+    Args:
+        version: The raw flow version record from the repository.
+        repo: The repository used to query flow nodes.
+
+    Returns:
+        A dictionary matching the FlowVersionResponse model.
+    """
+
+    def build_subtree(parent_id: str | None) -> list[dict[str, Any]]:
+        """Recursively build the list of child nodes for a parent.
+
+        Args:
+            parent_id: The parent node id, or None for top-level nodes.
+
+        Returns:
+            A list of node dictionaries with nested "children".
+        """
+        if parent_id is None:
+            rows = repo.load_top_level_nodes(version["flow_version_id"])
+        else:
+            rows = repo.load_child_nodes(parent_id)
+        return [
+            {
+                "id": r["flow_node_id"],
+                "kind": r["kind"],
+                "ord": r["ord"],
+                "title": r["title"],
+                "parent_node_id": r.get("fk_parent_flow_node_id"),
+                "binding_id": r.get("fk_binding_id"),
+                "input_mapping": r.get("input_mapping"),
+                "output_mapping": r.get("output_mapping"),
+                "items_path": r.get("items_path"),
+                "failure_policy": r.get("failure_policy"),
+                "children": build_subtree(r["flow_node_id"]),
+            }
+            for r in rows
+        ]
+
+    return {
+        "id": version["flow_version_id"],
+        "flow_id": version["fk_flow_id"],
+        "version": version["version"],
+        "status": version["status"],
+        "nodes": build_subtree(None),
+    }
+
+
+# ── Question & list item builders ───────────────────────────
+
+def build_question_response(q: dict[str, Any]) -> dict[str, Any]:
+    """Build a public QuestionResponse dictionary from a raw question record.
+
+    Args:
+        q: The raw question record from the repository.
+
+    Returns:
+        A dictionary matching the QuestionResponse model.
+    """
+    return {
+        "id": q["question_id"],
+        "node_state_id": q["fk_node_state_id"],
+        "prompt": q.get("prompt", ""),
+        "options": q.get("options"),
+        "status": q.get("status", "open"),
+        "created_at": q.get("created_at"),
+    }
+
+
+def build_run_list_item(run: dict[str, Any]) -> dict[str, Any]:
+    """Build a public RunListItem dictionary from a raw run record.
+
+    Args:
+        run: The raw run record from the repository.
+
+    Returns:
+        A dictionary matching the RunListItem model.
+
+    Note:
+        The caller obtains run rows via repo.load_all_runs(), which returns
+        raw run dicts ordered by creation time.
+    """
+    return {
+        "id": run["run_id"],
+        "status": run["status"],
+        "flow_id": run["fk_flow_id"],
+        "flow_version_id": run["fk_flow_version_id"],
+        "pause_reason": run.get("pause_reason"),
+        "created_at": run.get("created_at"),
+        "started_at": run.get("started_at"),
+        "finished_at": run.get("finished_at"),
+    }
+
+
+# ── Binding response builders ─────────────────────────────────
+
+
+def build_binding_response(binding: dict[str, Any]) -> dict[str, Any]:
+    """Build a public BindingResponse dictionary from a raw binding record.
+
+    The raw record is a joined INTEGRATION_BINDING + kind-specific config row.
+    DB integer flags are converted to booleans and JSON fields are already
+    parsed by the repository.
+
+    Args:
+        binding: The raw binding record from the repository.
+
+    Returns:
+        A dictionary matching the BindingResponse union.
+
+    Raises:
+        BindingKindMismatchError: if the binding kind is not "api" or "hermes".
+    """
+    kind = binding["kind"]
+    base = {
+        "id": binding["binding_id"],
+        "kind": kind,
+        "display_title": binding["display_title"],
+        "is_enabled": bool(binding["is_enabled"]),
+        "created_at": binding["created_at"],
+        "updated_at": binding["updated_at"],
+    }
+    if kind == "api":
+        base["config"] = {
+            "method": binding["method"],
+            "url_template": binding["url_template"],
+            "auth_ref": binding.get("auth_ref"),
+            "headers": binding.get("headers", {}),
+            "request_mode": binding.get("request_mode", "json"),
+            "completion_mode": binding.get("completion_mode", "response"),
+            "external_ref_path": binding.get("external_ref_path"),
+            "status_method": binding.get("status_method", "GET"),
+            "status_url_template": binding.get("status_url_template"),
+            "status_path": binding.get("status_path"),
+            "success_values": binding.get("success_values", ["success", "completed"]),
+            "failure_values": binding.get("failure_values", ["failure", "failed", "cancelled"]),
+            "result_path": binding.get("result_path"),
+        }
+    elif kind == "hermes":
+        base["config"] = {
+            "board": binding["board"],
+            "profile": binding.get("profile"),
+            "task_title_template": binding["task_title_template"],
+            "task_body_template": binding["task_body_template"],
+            "skills": binding.get("skills", []),
+            "tenant_template": binding.get("tenant_template"),
+            "workspace_template": binding.get("workspace_template"),
+            "goal_mode": bool(binding.get("goal_mode", 0)),
+        }
+    else:
+        raise BindingKindMismatchError(f"unknown binding kind: {kind}")
+    return base
