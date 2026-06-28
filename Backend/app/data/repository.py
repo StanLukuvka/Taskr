@@ -51,6 +51,30 @@ class TaskrRepository:
             conn.executescript(SCHEMA_PATH.read_text())
             conn.commit()
         return conn
+    
+    @staticmethod
+    def _schema_exists(conn: sqlite3.Connection) -> bool:
+        """Quick check: does the schema look already applied?"""
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'FLOW'"
+        ).fetchone()
+        return row is not None
+
+    @staticmethod
+    def apply_schema() -> None:
+        """Force-apply the schema. Used by FastAPI on startup."""
+        conn = TaskrRepository.get_connection()
+        try:
+            conn.executescript(SCHEMA_PATH.read_text())
+            conn.commit()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def reset_db() -> None:
+        """Delete the DB file and re-apply the schema. Useful for tests."""
+        DB_PATH.unlink(missing_ok=True)
+        TaskrRepository.apply_schema()
 
     def _one(self, query: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
         """Run a SELECT and return a single row, or None."""
