@@ -6,10 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.endpoints.flows import router as flows_router
-from app.endpoints.node_states import router as node_states_router
-from app.endpoints.runs import router as runs_router
-from app.repository import TaskrRepository
+from app.flow.endpoints import router as flows_router
+from app.endpoint.node_states import router as node_states_router
+from app.endpoint.runs import router as runs_router
+from app.data.repository import TaskrRepository
+from app.errors.handlers import register_handlers
 
 """FastAPI application.
 
@@ -60,6 +61,8 @@ app.include_router(flows_router)
 app.include_router(runs_router)
 app.include_router(node_states_router)
 
+register_handlers(app)
+
 
 @app.on_event("startup")
 def on_startup():
@@ -72,6 +75,6 @@ def on_startup():
     TaskrRepository.apply_schema()
 
 
-_frontend_path = Path(__file__).resolve().parent.parent.parent / "Frontend" / "dist"
+_frontend_path = Path(__file__).resolve().parent.parent.parent.parent / "Frontend" / "dist"
 if _frontend_path.exists():
     app.mount("/", StaticFiles(directory=str(_frontend_path), html=True), name="frontend")
