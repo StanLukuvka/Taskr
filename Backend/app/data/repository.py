@@ -221,3 +221,41 @@ class TaskrRepository:
         """Return all runs ordered by creation time."""
         return self._all("SELECT * FROM RUN ORDER BY created_at, run_id")
 
+    # ── Node state management ──────────────────────────────────────────────────
+
+    def load_run(self, run_id: str) -> dict[str, Any] | None:
+        """Fetch a single run by id."""
+        row = self.conn.execute("SELECT * FROM RUN WHERE run_id = ?", (run_id,)).fetchone()
+        return self._row_to_dict(row, "RUN") if row else None
+
+    def save_run(self, run: dict[str, Any]) -> dict[str, Any]:
+        """Persist changes to a run row and return the refreshed run."""
+        self.conn.execute(
+            """
+            UPDATE RUN
+            SET status = ?, context = ?, pause_reason = ?, failure_summary = ?,
+                started_at = ?, finished_at = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE run_id = ?
+            """,
+            (
+                run["status"],
+                self._json(run.get("context") or {}),
+                run.get("pause_reason"),
+                run.get("failure_summary"),
+                run.get("started_at"),
+                run.get("finished_at"),
+                run["run_id"],
+            ),
+        )
+        self.conn.commit()
+        return self.load_run(run["run_id"])
+
+    def delete_run(self, run_id: str) -> None:
+        """Delete a run and all its dependent records.
+
+        Uses ON DELETE CASCADE for node_states, loop_states, loop_iterations,
+        and questions so the delete is a single statement.
+        """
+        self.conn.execute("DELETE FROM RUN WHERE run_id = ?", (run_id,))
+        self.conn.commit()
+
