@@ -1,0 +1,172 @@
+"""End-to-end test for chained node inputs/outputs.
+
+This flow has two nodes:
+1. ``n-fizzbuzz`` — a Hermes node that produces a FizzBuzz message based on
+   ``$scope.n``.
+2. ``n-echo`` — an API node that POSTs the message to a local echo server and
+   returns the echoed body.
+
+It proves that downstream nodes can read ``$nodes.<node_id>.output`` and that the
+real API integration sends a POST body built from upstream output.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any, Generator
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.data.repository import TaskrRepository
+from app.endpoint.deps import _get_runner
+from app.logic.integrations.api import ApiIntegration
+from app.logic.integrations.fake import FakeHermesService, IntegrationResult, QuestionRequest
+from app.logic.runner import TaskrRunner
+from app.main.app import app
+
+
+class _EchoHandler(BaseHTTPRequestHandler):
+    """Echo server: POST /echo returns the request body as JSON."""
+
+    def do_POST(self) -> None:  # noqa: N802
+        if self.path == "/echo":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+        pass
+
+
+class FizzBuzzHermesService(FakeHermesService):
+    """Test-only Hermes service that computes FizzBuzz when asked."""
+
+    def create_task(self, inputs: dict) -> IntegrationResult:
+        if inputs.get("mode") == "fizzbuzz":
+            n = inputs.get("n", 0)
+            if n % 15 == 0:
+                text = "FizzBuzz"
+            elif n % 3 == 0:
+                text = "Fizz"
+            elif n % 5 == 0:
+                text = "Buzz"
+            else:
+                text = str(n)
+            return IntegrationResult(
+                status="completed",
+                external_ref="fizzbuzz-1",
+                output={"message": text},
+            )
+        return super().create_task(inputs)
+
+
+@pytest.fixture
+def echo_server() -> Generator[str, None, None]:
+    """Yield the base URL of a local echo server."""
+    server = HTTPServer(("127.0.0.1", 0), _EchoHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    address = server.server_address
+    yield f"http://{address[0]}:{address[1]}"
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture
+def client(echo_server: str) -> Generator[TestClient, None, None]:
+    """Yield a TestClient backed by an in-memory repo with the custom flow."""
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.row_factory = sqlite3.Row
+    from app.data.repository import SCHEMA_PATH
+    conn.executescript(SCHEMA_PATH.read_text())
+    repo = TaskrRepository(conn)
+    repo.seed_data()
+
+    # Create a fresh flow, version, and binding
+    flow = repo.create_flow("FizzBuzz Echo", "fizzbuzz-echo", "Chained I/O test")
+    version = repo.create_flow_version(flow["flow_id"])
+    version_id = version["flow_version_id"]
+
+    echo_binding = repo.create_binding(
+        kind="api",
+        display_title="Echo Server",
+        config={
+            "method": "POST",
+            "url_template": f"{echo_server}/echo",
+            "headers": {"Content-Type": "application/json"},
+            "request_mode": "json",
+            "completion_mode": "response",
+        }
+    )
+
+    # Create flow nodes before publishing the version
+    repo.create_flow_node(
+        version_id,
+        "hermes",
+        0,
+        "Compute FizzBuzz",
+        node_id="n-fizzbuzz",
+        binding_id="b-hermes-research",
+        input_mapping={"mode": "fizzbuzz", "n": "$scope.n"},
+        output_mapping={"message": "$result.message"},
+        failure_policy="stop",
+    )
+    repo.create_flow_node(
+        version_id,
+        "api",
+        1,
+        "Echo Message",
+        node_id="n-echo",
+        binding_id=echo_binding["binding_id"],
+        input_mapping={"message": "$nodes.n-fizzbuzz.output.message"},
+        output_mapping={"echo": "$result.body"},
+        failure_policy="stop",
+    )
+
+    repo.publish_flow_version(version_id)
+
+    runner = TaskrRunner(repo, ApiIntegration(timeout=2.0), FizzBuzzHermesService())
+    app.dependency_overrides[_get_runner] = lambda: runner
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_fizzbuzz_echo_flow(client: TestClient) -> None:
+    """A downstream API node reads upstream Hermes output and echoes it."""
+    # Create run with n=15 -> FizzBuzz
+    create_resp = client.post("/runs", json={
+        "flow_slug": "fizzbuzz-echo",
+        "context": {"n": 15},
+    })
+    assert create_resp.status_code == 200, create_resp.text
+    run = create_resp.json()
+    run_id = run["id"]
+
+    # Tick to completion
+    for _ in range(10):
+        run = client.post(f"/runs/{run_id}/tick").json()
+        if run["status"] == "completed":
+            break
+    assert run["status"] == "completed", f"run did not complete: {run['status']}"
+
+    by_id = {s["node_id"]: s for s in run["node_states"]}
+    assert by_id["n-fizzbuzz"]["status"] == "completed"
+    assert by_id["n-fizzbuzz"]["output"]["message"] == "FizzBuzz"
+    assert by_id["n-echo"]["status"] == "completed"
+
+    echo_output = by_id["n-echo"]["output"]["echo"]
+    echoed = json.loads(echo_output)
+    assert echoed["message"] == "FizzBuzz"
