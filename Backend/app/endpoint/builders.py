@@ -18,15 +18,19 @@ place to adjust the response contract.
 
 # ── Run response builders ───────────────────────────────────
 
-def build_flow_response(flow: dict[str, Any]) -> dict[str, Any]:
+def build_flow_response(
+    flow: dict[str, Any], repo: TaskrRepository | None = None
+) -> dict[str, Any]:
     """Build a public FlowResponse dictionary from a raw flow record.
 
     Args:
         flow: The raw flow record from the repository.
+        repo: Optional repository used to load the active version metadata.
 
     Returns:
         A dictionary matching the FlowResponse model.
     """
+    active_version = repo.load_active_flow_version(flow["flow_id"]) if repo is not None else None
     return {
         "id": flow["flow_id"],
         "title": flow["title"],
@@ -34,6 +38,8 @@ def build_flow_response(flow: dict[str, Any]) -> dict[str, Any]:
         "description": flow["description"],
         "created_at": flow.get("created_at"),
         "updated_at": flow.get("updated_at"),
+        "active_flow_version_id": active_version.get("flow_version_id") if active_version else None,
+        "active_flow_version_status": active_version.get("status") if active_version else None,
     }
 
 
