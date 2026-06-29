@@ -182,12 +182,12 @@ class TaskrRunner:
             run = self.repo.load_run(run_id)
             if not run:
                 raise RunNotFoundError(f"unknown run id: {run_id}", entity_id=run_id)
-            if run["status"] not in {"running", "paused"}:
+            if run["status"] != "running":
                 return []
             self.advance_run(run)
             return [run_id]
 
-        runs = self.repo.list_runs(["running", "paused"])
+        runs = self.repo.list_runs(["running"])
         results = []
         for run in runs:
             self.advance_run(run)
