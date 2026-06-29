@@ -41,10 +41,6 @@ OPENAPI_TAGS = [
         "description": "Inspect and interact with the runtime states of individual flow nodes.",
     },
     {
-        "name": "Questions",
-        "description": "View and answer questions raised by pausing node states.",
-    },
-    {
         "name": "Flow Nodes",
         "description": "Create and inspect nodes inside a flow version.",
     },
