@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -29,7 +29,7 @@ class FlowResponse(BaseModel):
     description: str
 
 
-class FlowResponseFull(BaseModel):
+class FlowResponseFull(FlowResponse):
     """Full representation of a flow including its versions.
 
     Attributes:
@@ -39,14 +39,14 @@ class FlowResponseFull(BaseModel):
         description: The human-readable description of what the flow answers.
         created_at: Creation timestamp.
         updated_at: Last update timestamp.
+        active_flow_version_id: Active published flow version, if one exists.
+        active_flow_version_status: Status of the active version, if one exists.
     """
 
-    id: str
-    title: str
-    slug: str
-    description: str
     created_at: str | None = None
     updated_at: str | None = None
+    active_flow_version_id: str | None = None
+    active_flow_version_status: Literal["draft", "active", "archived"] | None = None
 
 
 class FlowCreateRequest(BaseModel):
@@ -78,20 +78,24 @@ class FlowNodeResponse(BaseModel):
         input_mapping: Mapping used to build node input.
         output_mapping: Mapping used to write node output.
         items_path: For foreach nodes, the path to the list being iterated.
+        item_key_path: For foreach nodes, the path to each item's stable key.
         failure_policy: How failures are handled.
+        policy_refs: Policy references attached to the node.
         children: Nested child nodes for foreach containers.
     """
 
     id: str
-    kind: str
+    kind: Literal["api", "hermes", "foreach"]
     ord: int
     title: str
     parent_node_id: str | None = None
     binding_id: str | None = None
-    input_mapping: Any = None
-    output_mapping: Any = None
+    input_mapping: dict[str, Any] | None = None
+    output_mapping: dict[str, Any] | None = None
     items_path: str | None = None
-    failure_policy: str | None = None
+    item_key_path: str | None = None
+    failure_policy: Literal["stop", "continue"] | None = None
+    policy_refs: list[str] | None = None
     children: list["FlowNodeResponse"] = []
 
 
@@ -113,7 +117,7 @@ class FlowNodeCreateRequest(BaseModel):
         policy_refs: Optional policy references attached to the node.
     """
 
-    kind: str
+    kind: Literal["api", "hermes", "foreach"]
     ord: int
     title: str
     node_id: str | None = None
@@ -123,7 +127,7 @@ class FlowNodeCreateRequest(BaseModel):
     output_mapping: dict[str, Any] | None = None
     items_path: str | None = None
     item_key_path: str | None = None
-    failure_policy: str = "stop"
+    failure_policy: Literal["stop", "continue"] = "stop"
     policy_refs: list[str] | None = None
 
 
@@ -151,8 +155,8 @@ class FlowNodeUpdateRequest(BaseModel):
     output_mapping: dict[str, Any] | None = None
     items_path: str | None = None
     item_key_path: str | None = None
-    failure_policy: str | None = None
-    policy_refs: dict[str, Any] | None = None
+    failure_policy: Literal["stop", "continue"] | None = None
+    policy_refs: list[str] | None = None
 
 
 # ── Flow version models ─────────────────────────────────────
@@ -164,14 +168,14 @@ class FlowVersionResponse(BaseModel):
         id: Unique identifier for the flow version.
         flow_id: Owning flow identifier.
         version: Version number.
-        status: "draft" or "active".
+        status: "draft", "active", or "archived".
         nodes: Top-level nodes with nested children.
     """
 
     id: str
     flow_id: str
     version: int
-    status: str
+    status: Literal["draft", "active", "archived"]
     nodes: list[FlowNodeResponse] = []
 
 
@@ -188,4 +192,4 @@ class FlowVersionCreateResponse(BaseModel):
     id: str
     flow_id: str
     version: int
-    status: str
+    status: Literal["draft", "active", "archived"]
