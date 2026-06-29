@@ -95,11 +95,11 @@ class RunResponse(BaseModel):
 
     Attributes:
         id: Unique identifier for the run.
-        status: Current run status (e.g., "pending", "running", "paused").
+        status: Current run status (e.g., "pending", "running", "completed").
         flow_id: Identifier of the flow being executed.
         flow_version_id: Identifier of the flow version being executed.
         context: Execution context (arbitrary JSON-compatible data).
-        pause_reason: Reason the run is paused, if applicable.
+        cost_cents: Total spend recorded for this run in cents.
         failure_summary: Summary of any failure, if applicable.
         created_at: ISO timestamp when the run was created.
         started_at: ISO timestamp when the run started, if available.
@@ -108,11 +108,12 @@ class RunResponse(BaseModel):
     """
 
     id: str
-    status: str
+    status: Literal["pending", "running", "completed", "failed", "cancelled"]
     flow_id: str
     flow_version_id: str
     context: Any
-    pause_reason: str | None = None
+    cost_cents: int = 0
+    total_cost_cents: int = 0
     failure_summary: str | None = None
     created_at: str | None = None
     started_at: str | None = None
@@ -128,17 +129,16 @@ class RunListItem(BaseModel):
         status: Run status.
         flow_id: Owning flow identifier.
         flow_version_id: Executed flow version.
-        pause_reason: Reason for pause, if any.
         created_at: ISO timestamp.
         started_at: ISO timestamp.
         finished_at: ISO timestamp.
     """
 
     id: str
-    status: str
+    status: Literal["pending", "running", "completed", "failed", "cancelled"]
     flow_id: str
     flow_version_id: str
-    pause_reason: str | None = None
+    total_cost_cents: int = 0
     created_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
