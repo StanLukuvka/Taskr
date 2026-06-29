@@ -24,7 +24,6 @@ _JSON_FIELDS = {
     "FLOW_NODE": {"input_mapping", "output_mapping", "policy_refs"},
     "INTEGRATION_BINDING": {"headers", "success_values", "failure_values", "skills"},
     "NODE_STATE": {"binding_snapshot", "native_state", "input", "raw_output", "output"},
-    "QUESTION": {"options"},
     "LOOP_STATE": {"snapshot_metadata"},
     "LOOP_ITERATION": {"item", "output"},
 }
