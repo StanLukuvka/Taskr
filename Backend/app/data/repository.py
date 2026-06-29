@@ -257,28 +257,30 @@ class TaskrRepository:
         self.conn.execute(
             """
             UPDATE RUN
-            SET status = ?, context = ?, pause_reason = ?, failure_summary = ?,
+            SET status = ?, context = ?, failure_summary = ?, total_cost_cents = ?,
                 started_at = ?, finished_at = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE run_id = ?
             """,
             (
                 run["status"],
                 self._json(run.get("context") or {}),
-                run.get("pause_reason"),
                 run.get("failure_summary"),
+                int(run.get("total_cost_cents", 0) or 0),
                 run.get("started_at"),
                 run.get("finished_at"),
                 run["run_id"],
             ),
         )
         self.conn.commit()
-        return self.load_run(run["run_id"])
+        saved = self.load_run(run["run_id"])
+        assert saved is not None
+        return saved
 
     def delete_run(self, run_id: str) -> None:
         """Delete a run and all its dependent records.
 
-        Uses ON DELETE CASCADE for node_states, loop_states, loop_iterations,
-        and questions so the delete is a single statement.
+        Uses ON DELETE CASCADE for node_states, loop_states, and loop_iterations
+        so the delete is a single statement.
         """
         self.conn.execute("DELETE FROM RUN WHERE run_id = ?", (run_id,))
         self.conn.commit()
@@ -645,8 +647,8 @@ class TaskrRepository:
         binding = self.conn.execute("SELECT fk_binding_id FROM FLOW_NODE WHERE flow_node_id = ?", (node_id,)).fetchone()
         self.conn.execute(
             """
-            INSERT INTO NODE_STATE (node_state_id, fk_run_id, fk_flow_node_id, fk_loop_iteration_id, status, fk_binding_id)
-            VALUES (?, ?, ?, ?, 'pending', ?)
+            INSERT INTO NODE_STATE (node_state_id, fk_run_id, fk_flow_node_id, fk_loop_iteration_id, status, fk_binding_id, cost_cents)
+            VALUES (?, ?, ?, ?, 'pending', ?, 0)
             """,
             (state_id, run_id, node_id, loop_iteration_id, binding[0] if binding else None),
         )
@@ -702,7 +704,7 @@ class TaskrRepository:
             """
             UPDATE NODE_STATE
             SET status = ?, fk_binding_id = ?, binding_snapshot = ?, external_ref = ?, native_state = ?,
-                input = ?, raw_output = ?, output = ?, error_code = ?, error_message = ?, attempt = ?,
+                input = ?, raw_output = ?, output = ?, cost_cents = ?, error_code = ?, error_message = ?, attempt = ?,
                 started_at = ?, finished_at = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
             WHERE node_state_id = ?
             """,
@@ -715,6 +717,7 @@ class TaskrRepository:
                 self._json(state.get("input")),
                 self._json(state.get("raw_output")),
                 self._json(state.get("output")),
+                state.get("cost_cents", 0),
                 state.get("error_code"),
                 state.get("error_message"),
                 state.get("attempt", 0),
@@ -745,6 +748,7 @@ class TaskrRepository:
                 input = NULL,
                 raw_output = NULL,
                 output = NULL,
+                cost_cents = 0,
                 error_code = NULL,
                 error_message = NULL,
                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
@@ -788,11 +792,11 @@ class TaskrRepository:
             """
             INSERT INTO NODE_STATE (
                 node_state_id, fk_run_id, fk_flow_node_id, fk_loop_iteration_id, status,
-                fk_binding_id, binding_snapshot, input, raw_output, output,
+                fk_binding_id, binding_snapshot, input, raw_output, output, cost_cents,
                 attempt, started_at, finished_at, created_at
             )
             SELECT ?, ?, ns.fk_flow_node_id, NULL, 'completed',
-                   ns.fk_binding_id, ns.binding_snapshot, ns.input, ns.raw_output, ns.output,
+                   ns.fk_binding_id, ns.binding_snapshot, ns.input, ns.raw_output, ns.output, ns.cost_cents,
                    ns.attempt, ns.started_at, ns.finished_at, ns.created_at
             FROM NODE_STATE ns
             WHERE ns.node_state_id = ?
