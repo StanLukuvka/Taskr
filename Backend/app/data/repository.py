@@ -197,6 +197,13 @@ class TaskrRepository:
 
     def create_run(self, flow_id: str, flow_version_id: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """Create a new run and return it. Runs start with status 'running'."""
+        version = self.load_flow_version(flow_version_id)
+        if not version or version["status"] != "active":
+            raise FlowVersionNotActiveError(
+                f"flow version {flow_version_id} is not active",
+                entity_id=flow_version_id,
+            )
+
         run_id = f"run-{uuid.uuid4().hex[:12]}"
         self.conn.execute(
             """

@@ -14,3 +14,10 @@ class FlowVersionNotFoundError(TaskrError):
 class FlowVersionNotDraftError(TaskrError):
     status_code = 400
     detail = "Flow version is not in draft status"
+
+
+class FlowVersionNotActiveError(TaskrError):
+    """Raised when a run is created against a non-active flow version."""
+
+    status_code = 400
+    detail = "Flow version is not active"
