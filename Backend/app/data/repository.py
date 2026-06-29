@@ -211,11 +211,16 @@ class TaskrRepository:
         run_id = f"run-{uuid.uuid4().hex[:12]}"
         self.conn.execute(
             """
-            INSERT INTO RUN (run_id, fk_flow_id, fk_flow_version_id, status, context, started_at)
-            VALUES (?, ?, ?, 'running', ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            INSERT INTO RUN (run_id, fk_flow_id, fk_flow_version_id, status, context, total_cost_cents, started_at)
+            VALUES (?, ?, ?, 'running', ?, 0, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
             """,
             (run_id, flow_id, flow_version_id, self._json(context or {})),
         )
+        self.conn.commit()
+        run = self.load_run(run_id)
+        assert run is not None
+        return run
+
     def add_run_cost(self, run_id: str, amount_cents: int) -> dict[str, Any] | None:
         """Add a non-negative cost amount to a run's total cost."""
         if amount_cents < 0:
