@@ -88,5 +88,22 @@ register_handlers(app)
 
 
 _frontend_path = Path(__file__).resolve().parent.parent.parent.parent / "Frontend" / "dist"
+_frontend_index = _frontend_path / "index.html"
+_spa_paths = ("/runs", "/flows", "/bindings", "/flow_versions")
+
+
+@app.middleware("http")
+async def serve_frontend_history_routes(request: Request, call_next):
+    wants_html = "text/html" in request.headers.get("accept", "")
+    if (
+        request.method == "GET"
+        and wants_html
+        and _frontend_index.exists()
+        and request.url.path.startswith(_spa_paths)
+    ):
+        return FileResponse(_frontend_index)
+    return await call_next(request)
+
+
 if _frontend_path.exists():
     app.mount("/", StaticFiles(directory=str(_frontend_path), html=True), name="frontend")
