@@ -21,3 +21,10 @@ class FlowVersionNotActiveError(TaskrError):
 
     status_code = 400
     detail = "Flow version is not active"
+
+
+class CostAmountInvalidError(TaskrError):
+    """Raised when a cost-tracking mutation receives a negative amount."""
+
+    status_code = 400
+    detail = "Cost amount must be non-negative"
