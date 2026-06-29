@@ -3,16 +3,17 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.data.repository import TaskrRepository
 from app.endpoint.bindings import router as bindings_router
-from app.flow.endpoints import router as flows_router
 from app.endpoint.node_states import router as node_states_router
 from app.endpoint.runs import router as runs_router
-from app.data.repository import TaskrRepository
 from app.errors.handlers import register_handlers
+from app.flow.endpoints import router as flows_router
 
 """FastAPI application.
 
