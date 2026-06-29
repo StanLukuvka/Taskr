@@ -10,9 +10,9 @@
         "tags": [
           "Flow Nodes"
         ],
-        "summary": "Create Flow Node",
-        "description": "Create a new flow node within a flow version.\n\nValidates that the target flow version exists and is still in \"draft\"\nstatus, then delegates creation to the repository layer.\n\nArgs:\n    flow_version_id: The ID of the flow version that will own the node.\n    body: The flow node creation payload.\n\nReturns:\n    The newly created flow node record.\n\nRaises:\n    HTTPException: 404 if the flow version does not exist, or 400 if it is\n        not in draft status.",
-        "operationId": "create_flow_node_flow_versions__flow_version_id__flow_nodes_post",
+        "summary": "Create a flow node",
+        "description": "Create a new flow node within a flow version.\n\nValidates that the target flow version exists and is still in \"draft\"\nstatus, then delegates creation to the repository layer.\n\nArgs:\n    flow_version_id: The ID of the flow version that will own the node.\n    body: The flow node creation payload.\n\nReturns:\n    The newly created flow node record.\n\nRaises:\n    FlowVersionNotFoundError: 404 if the flow version does not exist.\n    FlowVersionNotDraftError: 400 if it is not in draft status.",
+        "operationId": "flow_nodes_create_flow_node",
         "parameters": [
           {
             "name": "flow_version_id",
@@ -63,9 +63,9 @@
         "tags": [
           "Flow Nodes"
         ],
-        "summary": "Update Flow Node",
-        "description": "Update an existing flow node.\n\nOnly fields provided in the body are updated. The flow version must be\nin draft status; published or archived versions are immutable.\n\nArgs:\n    node_id: The ID of the flow node to update.\n    body: The update payload containing only fields to change.\n\nReturns:\n    The updated flow node record.\n\nRaises:\n    HTTPException: 404 if the node does not exist, 400 if its flow\n        version is not in draft status.",
-        "operationId": "update_flow_node_flow_nodes__node_id__patch",
+        "summary": "Update a flow node",
+        "description": "Update an existing flow node.\n\nOnly fields provided in the body are updated. The flow version must be\nin draft status; published or archived versions are immutable.\n\nArgs:\n    node_id: The ID of the flow node to update.\n    body: The update payload containing only fields to change.\n\nReturns:\n    The updated flow node record.\n\nRaises:\n    FlowNodeNotFoundError: 404 if the node does not exist.\n    FlowVersionNotFoundError: 404 if the flow version does not exist.\n    FlowVersionNotDraftError: 400 if the flow version is not draft.",
+        "operationId": "flow_nodes_update_flow_node",
         "parameters": [
           {
             "name": "node_id",
@@ -114,9 +114,9 @@
         "tags": [
           "Flow Nodes"
         ],
-        "summary": "Delete Flow Node",
-        "description": "Delete a flow node and its children.\n\nThe flow version must be in draft status.\n\nArgs:\n    node_id: The ID of the flow node to delete.\n\nReturns:\n    A confirmation message.\n\nRaises:\n    HTTPException: 404 if the node does not exist, 400 if its flow\n        version is not in draft status.",
-        "operationId": "delete_flow_node_flow_nodes__node_id__delete",
+        "summary": "Delete a flow node",
+        "description": "Delete a flow node and its children.\n\nThe flow version must be in draft status.\n\nArgs:\n    node_id: The ID of the flow node to delete.\n\nReturns:\n    A confirmation message.\n\nRaises:\n    FlowNodeNotFoundError: 404 if the node does not exist.\n    FlowVersionNotFoundError: 404 if the flow version does not exist.\n    FlowVersionNotDraftError: 400 if the flow version is not draft.",
+        "operationId": "flow_nodes_delete_flow_node",
         "parameters": [
           {
             "name": "node_id",
@@ -155,9 +155,9 @@
         "tags": [
           "Flows"
         ],
-        "summary": "List Flows",
+        "summary": "List flows",
         "description": "List all flows.\n\nReturns:\n    A list of FlowResponse records.",
-        "operationId": "list_flows_flows_get",
+        "operationId": "flows_list_flows",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -165,10 +165,10 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/FlowResponse"
+                    "$ref": "#/components/schemas/FlowResponseFull"
                   },
                   "type": "array",
-                  "title": "Response List Flows Flows Get"
+                  "title": "Response Flows List Flows"
                 }
               }
             }
@@ -179,9 +179,9 @@
         "tags": [
           "Flows"
         ],
-        "summary": "Create Flow",
-        "description": "Create a new flow.\n\nArgs:\n    body: The flow creation payload.\n\nReturns:\n    The newly created flow record.\n\nRaises:\n    HTTPException: 400 if the slug is already in use.",
-        "operationId": "create_flow_flows_post",
+        "summary": "Create a flow",
+        "description": "Create a new flow.\n\nArgs:\n    body: The flow creation payload.\n\nReturns:\n    The newly created flow record.\n\nRaises:\n    FlowSlugAlreadyInUseError: 400 if the slug is already in use.",
+        "operationId": "flows_create_flow",
         "requestBody": {
           "content": {
             "application/json": {
@@ -221,9 +221,9 @@
         "tags": [
           "Flow Versions"
         ],
-        "summary": "Create Flow Version",
-        "description": "Create a new draft flow version for a flow.\n\nThe version number is auto-incremented. The new version starts in draft\nstatus so nodes can be added before publishing.\n\nArgs:\n    flow_id: The ID of the flow to create a version for.\n\nReturns:\n    The newly created flow version record.\n\nRaises:\n    HTTPException: 404 if the flow does not exist.",
-        "operationId": "create_flow_version_flows__flow_id__versions_post",
+        "summary": "Create a flow version",
+        "description": "Create a new draft flow version for a flow.\n\nThe version number is auto-incremented. The new version starts in draft\nstatus so nodes can be added before publishing.\n\nArgs:\n    flow_id: The ID of the flow to create a version for.\n\nReturns:\n    The newly created flow version record.\n\nRaises:\n    FlowNotFoundError: 404 if the flow does not exist.",
+        "operationId": "flow_versions_create_flow_version",
         "parameters": [
           {
             "name": "flow_id",
@@ -264,9 +264,9 @@
         "tags": [
           "Flow Versions"
         ],
-        "summary": "Publish Flow Version",
-        "description": "Publish a draft flow version, making it the active version.\n\nAny previously active version for the same flow is archived.\n\nArgs:\n    flow_version_id: The ID of the draft flow version to publish.\n\nReturns:\n    The updated flow version record with status \"active\".\n\nRaises:\n    HTTPException: 404 if the version does not exist, 400 if it is\n        not in draft status.",
-        "operationId": "publish_flow_version_flow_versions__flow_version_id__publish_post",
+        "summary": "Publish a flow version",
+        "description": "Publish a draft flow version, making it the active version.\n\nAny previously active version for the same flow is archived.\n\nArgs:\n    flow_version_id: The ID of the draft flow version to publish.\n\nReturns:\n    The updated flow version record with status \"active\".\n\nRaises:\n    FlowVersionNotFoundError: 404 if the version does not exist.\n    FlowVersionNotDraftError: 400 if it is not in draft status.",
+        "operationId": "flow_versions_publish_flow_version",
         "parameters": [
           {
             "name": "flow_version_id",
@@ -302,14 +302,57 @@
         }
       }
     },
+    "/flow_versions/{flow_version_id}": {
+      "get": {
+        "tags": [
+          "Flow Versions"
+        ],
+        "summary": "Get a flow version",
+        "description": "Retrieve a flow version and its full node tree.\n\nArgs:\n    flow_version_id: The ID of the flow version.\n\nReturns:\n    A FlowVersionResponse containing the version metadata and nested nodes.\n\nRaises:\n    FlowVersionNotFoundError: 404 if the flow version does not exist.",
+        "operationId": "flow_versions_get_flow_version",
+        "parameters": [
+          {
+            "name": "flow_version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Flow Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlowVersionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/runs": {
       "get": {
         "tags": [
           "Runs"
         ],
-        "summary": "List Runs",
+        "summary": "List runs",
         "description": "List all runs.\n\nReturns:\n    A list of RunListItem records, ordered by creation time.",
-        "operationId": "list_runs_runs_get",
+        "operationId": "runs_list_runs",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -320,7 +363,7 @@
                     "$ref": "#/components/schemas/RunListItem"
                   },
                   "type": "array",
-                  "title": "Response List Runs Runs Get"
+                  "title": "Response Runs List Runs"
                 }
               }
             }
@@ -331,9 +374,9 @@
         "tags": [
           "Runs"
         ],
-        "summary": "Create Run",
-        "description": "Create a new run for a flow.\n\nIf no body is provided, the seeded \"soda-comparison\" demo flow is used\nwith an empty context. This keeps the endpoint usable for quick manual\ntests while also allowing a frontend to specify which flow to run and\nwhat initial context to pass.\n\nArgs:\n    body: Optional run creation payload containing the flow slug and context.\n\nReturns:\n    A RunResponse containing the created run and its initial node states.",
-        "operationId": "create_run_runs_post",
+        "summary": "Create a run",
+        "description": "Create a new run for a flow or a specific flow version.\n\nIf no body is provided, the seeded \"soda-comparison\" demo flow is used\nwith an empty context. If ``flow_version_id`` is provided it takes\nprecedence over ``flow_slug`` and the run uses that exact version.\n\nArgs:\n    body: Optional run creation payload containing a flow slug, an exact\n        flow version id, and/or context.\n\nReturns:\n    A RunResponse containing the created run and its initial node states.",
+        "operationId": "runs_create_run",
         "requestBody": {
           "content": {
             "application/json": {
@@ -375,104 +418,14 @@
         }
       }
     },
-    "/flow_versions/{flow_version_id}": {
-      "get": {
-        "tags": [
-          "Flow Versions"
-        ],
-        "summary": "Get Flow Version",
-        "description": "Retrieve a flow version and its full node tree.\n\nArgs:\n    flow_version_id: The ID of the flow version.\n\nReturns:\n    A FlowVersionResponse containing the version metadata and nested nodes.\n\nRaises:\n    HTTPException: 404 if the flow version does not exist.",
-        "operationId": "get_flow_version_flow_versions__flow_version_id__get",
-        "parameters": [
-          {
-            "name": "flow_version_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Flow Version Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FlowVersionResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/runs/{run_id}/questions": {
-      "get": {
-        "tags": [
-          "Questions"
-        ],
-        "summary": "Get Run Questions",
-        "description": "List all open questions for a run.\n\nArgs:\n    run_id: The ID of the run.\n\nReturns:\n    A list of open QuestionResponse records.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
-        "operationId": "get_run_questions_runs__run_id__questions_get",
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/QuestionResponse"
-                  },
-                  "title": "Response Get Run Questions Runs  Run Id  Questions Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/runs/{run_id}/tick": {
       "post": {
         "tags": [
           "Runs"
         ],
-        "summary": "Tick Run",
-        "description": "Advance a run by one execution tick.\n\nA tick evaluates pending node states, executes the next ready node, and\nupdates the run's status. This endpoint returns the run after the tick has\nbeen applied.\n\nArgs:\n    run_id: The ID of the run to advance.\n\nReturns:\n    A RunResponse reflecting the run state after the tick.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
-        "operationId": "tick_run_runs__run_id__tick_post",
+        "summary": "Tick a run",
+        "description": "Advance a run by one execution tick.\n\nArgs:\n    run_id: The ID of the run to advance.\n\nReturns:\n    A RunResponse reflecting the run state after the tick.\n\nRaises:\n    RunNotFoundError: 404 if the run does not exist.",
+        "operationId": "runs_tick_run",
         "parameters": [
           {
             "name": "run_id",
@@ -513,9 +466,9 @@
         "tags": [
           "Runs"
         ],
-        "summary": "Get Run",
-        "description": "Retrieve a single run by ID.\n\nArgs:\n    run_id: The ID of the run to retrieve.\n\nReturns:\n    A RunResponse containing the run metadata and node states.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
-        "operationId": "get_run_runs__run_id__get",
+        "summary": "Get a run",
+        "description": "Retrieve a single run by ID.\n\nArgs:\n    run_id: The ID of the run to retrieve.\n\nReturns:\n    A RunResponse containing the run metadata and node states.\n\nRaises:\n    RunNotFoundError: 404 if the run does not exist.",
+        "operationId": "runs_get_run",
         "parameters": [
           {
             "name": "run_id",
@@ -554,9 +507,9 @@
         "tags": [
           "Runs"
         ],
-        "summary": "Delete Run",
-        "description": "Delete a run and all its child records.\n\nArgs:\n    run_id: The ID of the run to delete.\n\nReturns:\n    A RunActionResponse with status \"deleted\".\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
-        "operationId": "delete_run_runs__run_id__delete",
+        "summary": "Delete a run",
+        "description": "Delete a run and all its child records.\n\nArgs:\n    run_id: The ID of the run to delete.\n\nReturns:\n    A RunActionResponse with status \"deleted\".\n\nRaises:\n    RunNotFoundError: 404 if the run does not exist.",
+        "operationId": "runs_delete_run",
         "parameters": [
           {
             "name": "run_id",
@@ -597,9 +550,9 @@
         "tags": [
           "Runs"
         ],
-        "summary": "Cancel Run",
-        "description": "Cancel a run.\n\nMarks the run and all non-terminal node_states as cancelled. In-flight\ncalls to external APIs are not interrupted; cancellation is a local state\nchange that prevents future ticks from advancing the run.\n\nArgs:\n    run_id: The ID of the run to cancel.\n\nReturns:\n    A RunActionResponse with status \"cancelled\".\n\nRaises:\n    HTTPException: 404 if the run does not exist, 400 if it is already\n        terminal.",
-        "operationId": "cancel_run_runs__run_id__cancel_post",
+        "summary": "Cancel a run",
+        "description": "Cancel a run.\n\nMarks the run and all non-terminal node_states as cancelled. In-flight\ncalls to external APIs are not interrupted; cancellation is a local state\nchange that prevents future ticks from advancing the run.\n\nArgs:\n    run_id: The ID of the run to cancel.\n\nReturns:\n    A RunActionResponse with status \"cancelled\".\n\nRaises:\n    RunNotFoundError: 404 if the run does not exist.\n    RunAlreadyTerminalError: 400 if it is already terminal.",
+        "operationId": "runs_cancel_run",
         "parameters": [
           {
             "name": "run_id",
@@ -640,9 +593,9 @@
         "tags": [
           "Runs"
         ],
-        "summary": "Retry Run",
-        "description": "Retry a run by creating a fresh run from the same flow and context.\n\nThe original run is left unchanged. The new run is created from the same\nflow version and initial context as the original.\n\nArgs:\n    run_id: The ID of the run to retry.\n\nReturns:\n    A RunResponse for the newly created run.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
-        "operationId": "retry_run_runs__run_id__retry_post",
+        "summary": "Retry a run",
+        "description": "Retry a run by creating a fresh run from the same flow and context.\n\nThe original run is left unchanged. The new run is created from the same\nflow version and initial context as the original.\n\nArgs:\n    run_id: The ID of the run to retry.\n\nReturns:\n    A RunResponse for the newly created run.\n\nRaises:\n    RunNotFoundError: 404 if the run does not exist.",
+        "operationId": "runs_retry_run",
         "parameters": [
           {
             "name": "run_id",
@@ -678,14 +631,67 @@
         }
       }
     },
+    "/runs/{run_id}/restart_from": {
+      "post": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Restart a run from a node",
+        "description": "Create a new run starting from a specific node.\n\nThe source run is left unchanged. Upstream completed top-level action\nnode outputs are copied into the new run; the target node and all\ndownstream nodes are left pending.\n\nArgs:\n    run_id: The ID of the source run.\n    body: The restart payload containing the target flow node id.\n\nReturns:\n    A RestartFromResponse for the newly created run.\n\nRaises:\n    RunNotFoundError: 404 if the source run does not exist.\n    FlowNodeNotFoundError: 404 if the target node is not in the flow version.\n    RunRestartTargetError: 400 if the target node is not a top-level action node.",
+        "operationId": "runs_restart_from",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestartFromRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestartFromResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/runs/{run_id}/node-states": {
       "get": {
         "tags": [
           "Node States"
         ],
-        "summary": "List Node States",
-        "description": "List all node states associated with a run.\n\nArgs:\n    run_id: The ID of the parent run.\n\nReturns:\n    A dictionary with a single key, \"node_states\", containing the public\n    representations of each node state.\n\nRaises:\n    HTTPException: 404 if the run does not exist.",
-        "operationId": "list_node_states_runs__run_id__node_states_get",
+        "summary": "List node states",
+        "description": "List all node states associated with a run.\n\nArgs:\n    run_id: The ID of the parent run.\n\nReturns:\n    A dictionary with a single key, \"node_states\", containing the public\n    representations of each node state.\n\nRaises:\n    RunNotFoundError: 404 if the run does not exist.",
+        "operationId": "node_states_list_node_states",
         "parameters": [
           {
             "name": "run_id",
@@ -726,9 +732,9 @@
         "tags": [
           "Node States"
         ],
-        "summary": "Get Node State",
-        "description": "Retrieve a single node state by run ID and node state ID.\n\nArgs:\n    run_id: The ID of the parent run.\n    node_state_id: The ID of the node state to retrieve.\n\nReturns:\n    The public representation of the node state.\n\nRaises:\n    HTTPException: 404 if the run or node state does not exist, or if the\n        node state belongs to a different run.",
-        "operationId": "get_node_state_runs__run_id__node_states__node_state_id__get",
+        "summary": "Get a node state",
+        "description": "Retrieve a single node state by run ID and node state ID.\n\nArgs:\n    run_id: The ID of the parent run.\n    node_state_id: The ID of the node state to retrieve.\n\nReturns:\n    The public representation of the node state.\n\nRaises:\n    RunNotFoundError: 404 if the run does not exist.\n    NodeStateNotFoundError: 404 if the node state does not exist or\n        belongs to a different run.",
+        "operationId": "node_states_get_node_state",
         "parameters": [
           {
             "name": "run_id",
@@ -773,14 +779,14 @@
         }
       }
     },
-    "/runs/{run_id}/node-states/{node_state_id}/questions": {
-      "get": {
+    "/runs/{run_id}/node-states/{node_state_id}/retry": {
+      "post": {
         "tags": [
-          "Questions"
+          "Node States"
         ],
-        "summary": "Get Node State Questions",
-        "description": "List all questions associated with a node state.\n\nArgs:\n    run_id: The ID of the parent run.\n    node_state_id: The ID of the node state whose questions are queried.\n\nReturns:\n    A dictionary with a single key, \"questions\", containing the question\n    records.\n\nRaises:\n    HTTPException: 404 if the run or node state does not exist, or if the\n        node state belongs to a different run.",
-        "operationId": "get_node_state_questions_runs__run_id__node_states__node_state_id__questions_get",
+        "summary": "Retry a node state",
+        "description": "Reset a top-level node state to pending so it re-runs on the next tick.\n\nArgs:\n    run_id: The ID of the parent run.\n    node_state_id: The ID of the node state to retry.\n\nReturns:\n    A RetryNodeResponse with the new status and identifiers.\n\nRaises:\n    RunNotFoundError: 404 if the run does not exist.\n    NodeStateNotFoundError: 404 if the node state does not exist or belongs to another run.\n    NodeStateRetryError: 400 if the node state is inside a foreach loop or not an action node.",
+        "operationId": "node_states_retry_node_state",
         "parameters": [
           {
             "name": "run_id",
@@ -807,7 +813,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NodeStateQuestionsResponse"
+                  "$ref": "#/components/schemas/RetryNodeResponse"
                 }
               }
             }
@@ -825,31 +831,188 @@
         }
       }
     },
-    "/runs/{run_id}/node-states/{node_state_id}/answer": {
+    "/bindings": {
+      "get": {
+        "tags": [
+          "Bindings"
+        ],
+        "summary": "List bindings",
+        "description": "List all integration bindings.\n\nReturns:\n    A list of binding records with nested kind-specific config.",
+        "operationId": "bindings_list_bindings",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/ApiBindingResponse"
+                      },
+                      {
+                        "$ref": "#/components/schemas/HermesBindingResponse"
+                      }
+                    ],
+                    "discriminator": {
+                      "propertyName": "kind",
+                      "mapping": {
+                        "api": "#/components/schemas/ApiBindingResponse",
+                        "hermes": "#/components/schemas/HermesBindingResponse"
+                      }
+                    }
+                  },
+                  "type": "array",
+                  "title": "Response Bindings List Bindings"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
-          "Questions"
+          "Bindings"
         ],
-        "summary": "Answer Node State Question",
-        "description": "Answer the first open question for a node state.\n\nThe endpoint answers the oldest open question associated with the node\nstate. It is the caller's responsibility to ensure that questions are\nanswered in the order they were raised.\n\nArgs:\n    run_id: The ID of the parent run.\n    node_state_id: The ID of the node state whose question is answered.\n    body: The answer payload.\n\nReturns:\n    A dictionary with key \"status\" set to \"answered\".\n\nRaises:\n    HTTPException: 404 if the run or node state does not exist, 400 if there\n        is no open question to answer.",
-        "operationId": "answer_node_state_question_runs__run_id__node_states__node_state_id__answer_post",
-        "parameters": [
-          {
-            "name": "run_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Run Id"
+        "summary": "Create a binding",
+        "description": "Create a new integration binding.\n\nArgs:\n    body: A discriminated union of API or Hermes binding create payloads.\n\nReturns:\n    The newly created binding record with nested config.",
+        "operationId": "bindings_create_binding",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ApiBindingCreateRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/HermesBindingCreateRequest"
+                  }
+                ],
+                "title": "Body",
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "api": "#/components/schemas/ApiBindingCreateRequest",
+                    "hermes": "#/components/schemas/HermesBindingCreateRequest"
+                  }
+                }
+              }
             }
           },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiBindingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/HermesBindingResponse"
+                    }
+                  ],
+                  "title": "Response Bindings Create Binding",
+                  "discriminator": {
+                    "propertyName": "kind",
+                    "mapping": {
+                      "api": "#/components/schemas/ApiBindingResponse",
+                      "hermes": "#/components/schemas/HermesBindingResponse"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bindings/{binding_id}": {
+      "get": {
+        "tags": [
+          "Bindings"
+        ],
+        "summary": "Get a binding",
+        "description": "Retrieve a single integration binding.\n\nArgs:\n    binding_id: The unique binding identifier.\n\nReturns:\n    The binding record with nested config.\n\nRaises:\n    BindingNotFoundError: 404 if the binding does not exist.",
+        "operationId": "bindings_get_binding",
+        "parameters": [
           {
-            "name": "node_state_id",
+            "name": "binding_id",
             "in": "path",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Node State Id"
+              "title": "Binding Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiBindingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/HermesBindingResponse"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "kind",
+                    "mapping": {
+                      "api": "#/components/schemas/ApiBindingResponse",
+                      "hermes": "#/components/schemas/HermesBindingResponse"
+                    }
+                  },
+                  "title": "Response Bindings Get Binding"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Bindings"
+        ],
+        "summary": "Update a binding",
+        "description": "Update an integration binding.\n\nArgs:\n    binding_id: The unique binding identifier.\n    body: A discriminated union of API or Hermes binding update payloads.\n\nReturns:\n    The updated binding record with nested config.\n\nRaises:\n    BindingNotFoundError: 404 if the binding does not exist.\n    BindingKindMismatchError: 400 if the body kind does not match the stored kind.",
+        "operationId": "bindings_update_binding",
+        "parameters": [
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Binding Id"
             }
           }
         ],
@@ -858,7 +1021,22 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AnswerRequest"
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ApiBindingUpdateRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/HermesBindingUpdateRequest"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "kind",
+                  "mapping": {
+                    "api": "#/components/schemas/ApiBindingUpdateRequest",
+                    "hermes": "#/components/schemas/HermesBindingUpdateRequest"
+                  }
+                },
+                "title": "Body"
               }
             }
           }
@@ -869,7 +1047,65 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AnswerResponse"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiBindingResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/HermesBindingResponse"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "kind",
+                    "mapping": {
+                      "api": "#/components/schemas/ApiBindingResponse",
+                      "hermes": "#/components/schemas/HermesBindingResponse"
+                    }
+                  },
+                  "title": "Response Bindings Update Binding"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Bindings"
+        ],
+        "summary": "Delete a binding",
+        "description": "Delete an integration binding.\n\nArgs:\n    binding_id: The unique binding identifier.\n\nReturns:\n    A confirmation status.\n\nRaises:\n    BindingNotFoundError: 404 if the binding does not exist.\n    BindingInUseError: 409 if the binding is referenced by a flow node.",
+        "operationId": "bindings_delete_binding",
+        "parameters": [
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Binding Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Bindings Delete Binding"
                 }
               }
             }
@@ -890,40 +1126,289 @@
   },
   "components": {
     "schemas": {
-      "AnswerRequest": {
+      "ApiBindingConfig": {
         "properties": {
-          "answer": {
+          "method": {
             "type": "string",
-            "title": "Answer"
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ],
+            "title": "Method"
+          },
+          "url_template": {
+            "type": "string",
+            "title": "Url Template"
+          },
+          "auth_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Ref"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Headers",
+            "default": {}
+          },
+          "request_mode": {
+            "type": "string",
+            "enum": [
+              "json",
+              "query",
+              "none"
+            ],
+            "title": "Request Mode",
+            "default": "json"
+          },
+          "completion_mode": {
+            "type": "string",
+            "enum": [
+              "response",
+              "poll"
+            ],
+            "title": "Completion Mode",
+            "default": "response"
+          },
+          "external_ref_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ref Path"
+          },
+          "status_method": {
+            "type": "string",
+            "enum": [
+              "GET",
+              "POST"
+            ],
+            "title": "Status Method",
+            "default": "GET"
+          },
+          "status_url_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Url Template"
+          },
+          "status_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Path"
+          },
+          "success_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Success Values",
+            "default": [
+              "success",
+              "completed"
+            ]
+          },
+          "failure_values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failure Values",
+            "default": [
+              "failure",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "result_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Path"
           }
         },
         "type": "object",
         "required": [
-          "answer"
+          "method",
+          "url_template"
         ],
-        "title": "AnswerRequest",
-        "description": "Payload used to answer a question that has paused a node state.\n\nAttributes:\n    answer: The answer text supplied by the caller."
+        "title": "ApiBindingConfig",
+        "description": "Configuration specific to an API binding."
       },
-      "AnswerResponse": {
+      "ApiBindingCreateRequest": {
         "properties": {
-          "status": {
+          "display_title": {
             "type": "string",
-            "title": "Status"
+            "title": "Display Title"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "default": true
+          },
+          "kind": {
+            "type": "string",
+            "const": "api",
+            "title": "Kind"
+          },
+          "config": {
+            "$ref": "#/components/schemas/ApiBindingConfig"
           }
         },
         "type": "object",
         "required": [
-          "status"
+          "display_title",
+          "kind",
+          "config"
         ],
-        "title": "AnswerResponse",
-        "description": "Response returned after answering a question."
+        "title": "ApiBindingCreateRequest",
+        "description": "Payload to create an API binding."
+      },
+      "ApiBindingResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "display_title": {
+            "type": "string",
+            "title": "Display Title"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "kind": {
+            "type": "string",
+            "const": "api",
+            "title": "Kind"
+          },
+          "config": {
+            "$ref": "#/components/schemas/ApiBindingConfig"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_title",
+          "is_enabled",
+          "created_at",
+          "updated_at",
+          "kind",
+          "config"
+        ],
+        "title": "ApiBindingResponse",
+        "description": "API binding response with config nested."
+      },
+      "ApiBindingUpdateRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "api",
+            "title": "Kind"
+          },
+          "display_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Title"
+          },
+          "is_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Enabled"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiBindingConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "ApiBindingUpdateRequest",
+        "description": "Payload to update an API binding."
       },
       "CreateRunRequest": {
         "properties": {
           "flow_slug": {
-            "type": "string",
-            "title": "Flow Slug",
-            "default": "soda-comparison"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Slug"
+          },
+          "flow_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flow Version Id"
           },
           "context": {
             "anyOf": [
@@ -940,7 +1425,7 @@
         },
         "type": "object",
         "title": "CreateRunRequest",
-        "description": "Payload used to create a new run.\n\nAttributes:\n    flow_slug: The flow to execute. Defaults to the seeded demo flow.\n    context: Optional initial context for the run."
+        "description": "Payload used to create a new run.\n\nAttributes:\n    flow_slug: The flow to execute. Defaults to the seeded demo flow.\n    flow_version_id: Optional exact flow version to run. If provided,\n        flow_slug is ignored.\n    context: Optional initial context for the run."
       },
       "FlowCreateRequest": {
         "properties": {
@@ -952,24 +1437,29 @@
             "type": "string",
             "title": "Slug"
           },
-          "question": {
+          "description": {
             "type": "string",
-            "title": "Question"
+            "title": "Description"
           }
         },
         "type": "object",
         "required": [
           "title",
           "slug",
-          "question"
+          "description"
         ],
         "title": "FlowCreateRequest",
-        "description": "Payload used to create a new flow.\n\nAttributes:\n    title: Human-readable title for the flow.\n    slug: URL-friendly unique slug.\n    question: The question this flow answers."
+        "description": "Payload used to create a new flow.\n\nAttributes:\n    title: Human-readable title for the flow.\n    slug: URL-friendly unique slug.\n    description: The human-readable description of what the flow answers."
       },
       "FlowNodeCreateRequest": {
         "properties": {
           "kind": {
             "type": "string",
+            "enum": [
+              "api",
+              "hermes",
+              "foreach"
+            ],
             "title": "Kind"
           },
           "ord": {
@@ -1061,6 +1551,10 @@
           },
           "failure_policy": {
             "type": "string",
+            "enum": [
+              "stop",
+              "continue"
+            ],
             "title": "Failure Policy",
             "default": "stop"
           },
@@ -1096,6 +1590,11 @@
           },
           "kind": {
             "type": "string",
+            "enum": [
+              "api",
+              "hermes",
+              "foreach"
+            ],
             "title": "Kind"
           },
           "ord": {
@@ -1129,9 +1628,27 @@
             "title": "Binding Id"
           },
           "input_mapping": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Input Mapping"
           },
           "output_mapping": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Output Mapping"
           },
           "items_path": {
@@ -1145,7 +1662,7 @@
             ],
             "title": "Items Path"
           },
-          "failure_policy": {
+          "item_key_path": {
             "anyOf": [
               {
                 "type": "string"
@@ -1154,7 +1671,36 @@
                 "type": "null"
               }
             ],
+            "title": "Item Key Path"
+          },
+          "failure_policy": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "stop",
+                  "continue"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Failure Policy"
+          },
+          "policy_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Refs"
           },
           "children": {
             "items": {
@@ -1173,7 +1719,7 @@
           "title"
         ],
         "title": "FlowNodeResponse",
-        "description": "Public representation of a flow node, including children.\n\nAttributes:\n    id: Node identifier.\n    kind: Node kind (\"api\", \"hermes\", \"foreach\").\n    ord: Sibling order.\n    title: Display title.\n    parent_node_id: Parent identifier, if any.\n    binding_id: Integration binding, if any.\n    input_mapping: Mapping used to build node input.\n    output_mapping: Mapping used to write node output.\n    items_path: For foreach nodes, the path to the list being iterated.\n    failure_policy: How failures are handled.\n    children: Nested child nodes for foreach containers."
+        "description": "Public representation of a flow node, including children.\n\nAttributes:\n    id: Node identifier.\n    kind: Node kind (\"api\", \"hermes\", \"foreach\").\n    ord: Sibling order.\n    title: Display title.\n    parent_node_id: Parent identifier, if any.\n    binding_id: Integration binding, if any.\n    input_mapping: Mapping used to build node input.\n    output_mapping: Mapping used to write node output.\n    items_path: For foreach nodes, the path to the list being iterated.\n    item_key_path: For foreach nodes, the path to each item's stable key.\n    failure_policy: How failures are handled.\n    policy_refs: Policy references attached to the node.\n    children: Nested child nodes for foreach containers."
       },
       "FlowNodeUpdateRequest": {
         "properties": {
@@ -1259,7 +1805,11 @@
           "failure_policy": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "enum": [
+                  "stop",
+                  "continue"
+                ]
               },
               {
                 "type": "null"
@@ -1270,8 +1820,10 @@
           "policy_refs": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
@@ -1283,35 +1835,6 @@
         "type": "object",
         "title": "FlowNodeUpdateRequest",
         "description": "Payload used to update an existing flow node.\n\nAll fields are optional; only provided fields are updated.\n\nAttributes:\n    title: New title for the node.\n    ord: New display / execution order.\n    binding_id: New binding reference.\n    input_mapping: New input mapping.\n    output_mapping: New output mapping.\n    items_path: New items path (foreach only).\n    item_key_path: New item key path (foreach only).\n    failure_policy: New failure policy (\"stop\" or \"continue\").\n    policy_refs: New policy references."
-      },
-      "FlowResponse": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "title": {
-            "type": "string",
-            "title": "Title"
-          },
-          "slug": {
-            "type": "string",
-            "title": "Slug"
-          },
-          "question": {
-            "type": "string",
-            "title": "Question"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "title",
-          "slug",
-          "question"
-        ],
-        "title": "FlowResponse",
-        "description": "Public representation of a flow.\n\nAttributes:\n    id: Unique identifier for the flow.\n    title: Human-readable title.\n    slug: URL-friendly identifier.\n    question: One-line summary of what the flow answers."
       },
       "FlowResponseFull": {
         "properties": {
@@ -1327,9 +1850,9 @@
             "type": "string",
             "title": "Slug"
           },
-          "question": {
+          "description": {
             "type": "string",
-            "title": "Question"
+            "title": "Description"
           },
           "created_at": {
             "anyOf": [
@@ -1359,10 +1882,10 @@
           "id",
           "title",
           "slug",
-          "question"
+          "description"
         ],
         "title": "FlowResponseFull",
-        "description": "Full representation of a flow including its versions.\n\nAttributes:\n    id: Unique flow identifier.\n    title: Human-readable title.\n    slug: URL-friendly slug.\n    question: The question this flow answers.\n    created_at: Creation timestamp.\n    updated_at: Last update timestamp."
+        "description": "Full representation of a flow including its versions.\n\nAttributes:\n    id: Unique flow identifier.\n    title: Human-readable title.\n    slug: URL-friendly slug.\n    description: The human-readable description of what the flow answers.\n    created_at: Creation timestamp.\n    updated_at: Last update timestamp."
       },
       "FlowVersionCreateResponse": {
         "properties": {
@@ -1380,6 +1903,11 @@
           },
           "status": {
             "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "archived"
+            ],
             "title": "Status"
           }
         },
@@ -1409,6 +1937,11 @@
           },
           "status": {
             "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "archived"
+            ],
             "title": "Status"
           },
           "nodes": {
@@ -1428,7 +1961,7 @@
           "status"
         ],
         "title": "FlowVersionResponse",
-        "description": "Public representation of a flow version and its full node tree.\n\nAttributes:\n    id: Unique identifier for the flow version.\n    flow_id: Owning flow identifier.\n    version: Version number.\n    status: \"draft\" or \"active\".\n    nodes: Top-level nodes with nested children."
+        "description": "Public representation of a flow version and its full node tree.\n\nAttributes:\n    id: Unique identifier for the flow version.\n    flow_id: Owning flow identifier.\n    version: Version number.\n    status: \"draft\", \"active\", or \"archived\".\n    nodes: Top-level nodes with nested children."
       },
       "HTTPValidationError": {
         "properties": {
@@ -1443,20 +1976,195 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
-      "NodeStateQuestionsResponse": {
+      "HermesBindingConfig": {
         "properties": {
-          "questions": {
+          "board": {
+            "type": "string",
+            "title": "Board"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
+          "task_title_template": {
+            "type": "string",
+            "title": "Task Title Template"
+          },
+          "task_body_template": {
+            "type": "string",
+            "title": "Task Body Template"
+          },
+          "skills": {
             "items": {
-              "$ref": "#/components/schemas/QuestionResponse"
+              "type": "string"
             },
             "type": "array",
-            "title": "Questions",
+            "title": "Skills",
             "default": []
+          },
+          "tenant_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Template"
+          },
+          "workspace_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Template"
+          },
+          "goal_mode": {
+            "type": "boolean",
+            "title": "Goal Mode",
+            "default": false
           }
         },
         "type": "object",
-        "title": "NodeStateQuestionsResponse",
-        "description": "Wrapper for a list of questions on a node state."
+        "required": [
+          "board",
+          "task_title_template",
+          "task_body_template"
+        ],
+        "title": "HermesBindingConfig",
+        "description": "Configuration specific to a Hermes binding."
+      },
+      "HermesBindingCreateRequest": {
+        "properties": {
+          "display_title": {
+            "type": "string",
+            "title": "Display Title"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "default": true
+          },
+          "kind": {
+            "type": "string",
+            "const": "hermes",
+            "title": "Kind"
+          },
+          "config": {
+            "$ref": "#/components/schemas/HermesBindingConfig"
+          }
+        },
+        "type": "object",
+        "required": [
+          "display_title",
+          "kind",
+          "config"
+        ],
+        "title": "HermesBindingCreateRequest",
+        "description": "Payload to create a Hermes binding."
+      },
+      "HermesBindingResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "display_title": {
+            "type": "string",
+            "title": "Display Title"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "kind": {
+            "type": "string",
+            "const": "hermes",
+            "title": "Kind"
+          },
+          "config": {
+            "$ref": "#/components/schemas/HermesBindingConfig"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_title",
+          "is_enabled",
+          "created_at",
+          "updated_at",
+          "kind",
+          "config"
+        ],
+        "title": "HermesBindingResponse",
+        "description": "Hermes binding response with config nested."
+      },
+      "HermesBindingUpdateRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "hermes",
+            "title": "Kind"
+          },
+          "display_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Title"
+          },
+          "is_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Enabled"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HermesBindingConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "HermesBindingUpdateRequest",
+        "description": "Payload to update a Hermes binding."
       },
       "NodeStateResponse": {
         "properties": {
@@ -1507,6 +2215,15 @@
           },
           "status": {
             "type": "string",
+            "enum": [
+              "pending",
+              "ready",
+              "dispatching",
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
             "title": "Status"
           },
           "binding_id": {
@@ -1542,6 +2259,11 @@
           },
           "output": {
             "title": "Output"
+          },
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
           },
           "error_code": {
             "anyOf": [
@@ -1623,7 +2345,7 @@
           "attempt"
         ],
         "title": "NodeStateResponse",
-        "description": "Public representation of a single node state.\n\nAttributes:\n    id: Unique identifier for the node state.\n    run_id: Parent run identifier.\n    node_id: Identifier of the flow node being executed.\n    node_title: Display title of the flow node.\n    node_kind: Kind of the flow node (\"api\", \"hermes\", \"foreach\").\n    loop_iteration_id: For nodes inside a foreach loop, the iteration id.\n    status: Current execution status (e.g., \"pending\", \"running\", \"completed\", \"blocked\").\n    binding_id: Integration binding used, if any.\n    binding_snapshot: Snapshot of the binding configuration at execution time.\n    external_ref: External reference returned by the integration, if any.\n    input: Resolved input passed to the node, if available.\n    raw_output: Raw output returned by the integration, if available.\n    output: Mapped output after applying output_mapping, if available.\n    error_code: Error code if the node failed.\n    error_message: Error message if the node failed.\n    attempt: Number of attempts made.\n    created_at: ISO timestamp when the node state was created.\n    started_at: ISO timestamp when execution started.\n    finished_at: ISO timestamp when execution finished.\n    updated_at: ISO timestamp of the last update."
+        "description": "Public representation of a single node state.\n\nAttributes:\n    id: Unique identifier for the node state.\n    run_id: Parent run identifier.\n    node_id: Identifier of the flow node being executed.\n    node_title: Display title of the flow node.\n    node_kind: Kind of the flow node (\"api\", \"hermes\", \"foreach\").\n    loop_iteration_id: For nodes inside a foreach loop, the iteration id.\n    status: Current execution status (e.g., \"pending\", \"running\", \"completed\").\n    binding_id: Integration binding used, if any.\n    binding_snapshot: Snapshot of the binding configuration at execution time.\n    external_ref: External reference returned by the integration, if any.\n    input: Resolved input passed to the node, if available.\n    raw_output: Raw output returned by the integration, if available.\n    output: Mapped output after applying output_mapping, if available.\n    cost_cents: Spend attributed to this node execution in cents.\n    error_code: Error code if the node failed.\n    error_message: Error message if the node failed.\n    attempt: Number of attempts made.\n    created_at: ISO timestamp when the node state was created.\n    started_at: ISO timestamp when execution started.\n    finished_at: ISO timestamp when execution finished.\n    updated_at: ISO timestamp of the last update."
       },
       "NodeStatesListResponse": {
         "properties": {
@@ -1638,28 +2360,71 @@
         },
         "type": "object",
         "title": "NodeStatesListResponse",
-        "description": "Wrapper for a list of node states."
+        "description": "Wrapper for a list of node states.\n\nAttributes:\n    node_states: The list of node state records."
       },
-      "QuestionResponse": {
+      "RestartFromRequest": {
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "title": "Node Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_id"
+        ],
+        "title": "RestartFromRequest",
+        "description": "Payload to restart a run from a specific flow node.\n\nAttributes:\n    node_id: The flow node id to restart from."
+      },
+      "RestartFromResponse": {
         "properties": {
           "id": {
             "type": "string",
             "title": "Id"
           },
-          "node_state_id": {
-            "type": "string",
-            "title": "Node State Id"
-          },
-          "prompt": {
-            "type": "string",
-            "title": "Prompt"
-          },
-          "options": {
-            "title": "Options"
-          },
           "status": {
             "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "paused",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
             "title": "Status"
+          },
+          "flow_id": {
+            "type": "string",
+            "title": "Flow Id"
+          },
+          "flow_version_id": {
+            "type": "string",
+            "title": "Flow Version Id"
+          },
+          "context": {
+            "title": "Context"
+          },
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
+          },
+          "total_cost_cents": {
+            "type": "integer",
+            "title": "Total Cost Cents",
+            "default": 0
+          },
+          "failure_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Summary"
           },
           "created_at": {
             "anyOf": [
@@ -1671,17 +2436,77 @@
               }
             ],
             "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "node_states": {
+            "items": {
+              "$ref": "#/components/schemas/NodeStateResponse"
+            },
+            "type": "array",
+            "title": "Node States",
+            "default": []
+          },
+          "source_run_id": {
+            "type": "string",
+            "title": "Source Run Id"
           }
         },
         "type": "object",
         "required": [
           "id",
-          "node_state_id",
-          "prompt",
-          "status"
+          "status",
+          "flow_id",
+          "flow_version_id",
+          "context",
+          "source_run_id"
         ],
-        "title": "QuestionResponse",
-        "description": "Public representation of a question raised during node execution.\n\nAttributes:\n    id: Unique identifier for the question.\n    node_state_id: Identifier of the node state that raised the question.\n    prompt: Text prompt shown to the user.\n    options: Optional list of selectable options or structured choices.\n    status: Current status of the question (e.g., \"open\", \"answered\").\n    created_at: ISO timestamp when the question was created."
+        "title": "RestartFromResponse",
+        "description": "Response for a restart_from request.\n\nAttributes:\n    source_run_id: The id of the run that was restarted from."
+      },
+      "RetryNodeResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "node_state_id": {
+            "type": "string",
+            "title": "Node State Id"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "node_state_id",
+          "run_id"
+        ],
+        "title": "RetryNodeResponse",
+        "description": "Response after retrying a node state.\n\nAttributes:\n    status: The new status of the node state.\n    node_state_id: The id of the retried node state.\n    run_id: The id of the parent run."
       },
       "RunActionResponse": {
         "properties": {
@@ -1706,7 +2531,7 @@
           "status"
         ],
         "title": "RunActionResponse",
-        "description": "Response returned after a run-level action such as cancel or retry."
+        "description": "Response returned after a run-level action such as cancel or retry.\n\nAttributes:\n    status: The action status string.\n    run_id: The run identifier, if applicable."
       },
       "RunListItem": {
         "properties": {
@@ -1716,6 +2541,14 @@
           },
           "status": {
             "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "paused",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
             "title": "Status"
           },
           "flow_id": {
@@ -1726,16 +2559,10 @@
             "type": "string",
             "title": "Flow Version Id"
           },
-          "pause_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pause Reason"
+          "total_cost_cents": {
+            "type": "integer",
+            "title": "Total Cost Cents",
+            "default": 0
           },
           "created_at": {
             "anyOf": [
@@ -1779,7 +2606,7 @@
           "flow_version_id"
         ],
         "title": "RunListItem",
-        "description": "Public representation of a run in list views.\n\nAttributes:\n    id: Run identifier.\n    status: Run status.\n    flow_id: Owning flow identifier.\n    flow_version_id: Executed flow version.\n    pause_reason: Reason for pause, if any.\n    created_at: ISO timestamp.\n    started_at: ISO timestamp.\n    finished_at: ISO timestamp."
+        "description": "Public representation of a run in list views.\n\nAttributes:\n    id: Run identifier.\n    status: Run status.\n    flow_id: Owning flow identifier.\n    flow_version_id: Executed flow version.\n    created_at: ISO timestamp.\n    started_at: ISO timestamp.\n    finished_at: ISO timestamp."
       },
       "RunResponse": {
         "properties": {
@@ -1789,6 +2616,14 @@
           },
           "status": {
             "type": "string",
+            "enum": [
+              "pending",
+              "running",
+              "paused",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
             "title": "Status"
           },
           "flow_id": {
@@ -1802,16 +2637,15 @@
           "context": {
             "title": "Context"
           },
-          "pause_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pause Reason"
+          "cost_cents": {
+            "type": "integer",
+            "title": "Cost Cents",
+            "default": 0
+          },
+          "total_cost_cents": {
+            "type": "integer",
+            "title": "Total Cost Cents",
+            "default": 0
           },
           "failure_summary": {
             "anyOf": [
@@ -1875,7 +2709,7 @@
           "context"
         ],
         "title": "RunResponse",
-        "description": "Public representation of a run and its associated node states.\n\nAttributes:\n    id: Unique identifier for the run.\n    status: Current run status (e.g., \"pending\", \"running\", \"paused\").\n    flow_id: Identifier of the flow being executed.\n    flow_version_id: Identifier of the flow version being executed.\n    context: Execution context (arbitrary JSON-compatible data).\n    pause_reason: Reason the run is paused, if applicable.\n    failure_summary: Summary of any failure, if applicable.\n    created_at: ISO timestamp when the run was created.\n    started_at: ISO timestamp when the run started, if available.\n    finished_at: ISO timestamp when the run finished, if available.\n    node_states: List of node state records joined with node metadata."
+        "description": "Public representation of a run and its associated node states.\n\nAttributes:\n    id: Unique identifier for the run.\n    status: Current run status (e.g., \"pending\", \"running\", \"paused\").\n    flow_id: Identifier of the flow being executed.\n    flow_version_id: Identifier of the flow version being executed.\n    context: Execution context (arbitrary JSON-compatible data).\n    cost_cents: Total spend recorded for this run in cents.\n    failure_summary: Summary of any failure, if applicable.\n    created_at: ISO timestamp when the run was created.\n    started_at: ISO timestamp when the run started, if available.\n    finished_at: ISO timestamp when the run finished, if available.\n    node_states: List of node state records joined with node metadata."
       },
       "ValidationError": {
         "properties": {
@@ -1937,12 +2771,12 @@
       "description": "Inspect and interact with the runtime states of individual flow nodes."
     },
     {
-      "name": "Questions",
-      "description": "View and answer questions raised by pausing node states."
-    },
-    {
       "name": "Flow Nodes",
       "description": "Create and inspect nodes inside a flow version."
+    },
+    {
+      "name": "Bindings",
+      "description": "Create and manage integration bindings for external API and Hermes connections."
     }
   ]
 }
