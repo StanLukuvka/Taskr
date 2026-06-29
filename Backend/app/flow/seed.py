@@ -2,7 +2,7 @@
 
 This module creates a sample "Soda Comparison" flow so the MVP can be
 exercised without a flow-design UI. The sample flow exercises API calls,
-a foreach loop, and Hermes question blocking.
+a foreach loop, and Hermes task completion.
 
 The function takes a TaskrRepository and populates it idempotently.
 """
