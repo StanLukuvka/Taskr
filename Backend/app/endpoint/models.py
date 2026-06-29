@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
-"""Pydantic models for run execution, node states, and questions.
+"""Pydantic models for run execution and node states.
 
 These models represent the runtime execution layer — the state of
-runs in progress, their node states, and questions raised during
-execution.
+runs in progress and their node states.
 """
 
 
@@ -24,13 +23,14 @@ class NodeStateResponse(BaseModel):
         node_title: Display title of the flow node.
         node_kind: Kind of the flow node ("api", "hermes", "foreach").
         loop_iteration_id: For nodes inside a foreach loop, the iteration id.
-        status: Current execution status (e.g., "pending", "running", "completed", "blocked").
+        status: Current execution status (e.g., "pending", "running", "completed").
         binding_id: Integration binding used, if any.
         binding_snapshot: Snapshot of the binding configuration at execution time.
         external_ref: External reference returned by the integration, if any.
         input: Resolved input passed to the node, if available.
         raw_output: Raw output returned by the integration, if available.
         output: Mapped output after applying output_mapping, if available.
+        cost_cents: Spend attributed to this node execution in cents.
         error_code: Error code if the node failed.
         error_message: Error message if the node failed.
         attempt: Number of attempts made.
@@ -46,13 +46,14 @@ class NodeStateResponse(BaseModel):
     node_title: str | None = None
     node_kind: str | None = None
     loop_iteration_id: str | None = None
-    status: str
+    status: Literal["pending", "ready", "dispatching", "running", "completed", "failed", "cancelled"]
     binding_id: str | None = None
     binding_snapshot: Any = None
     external_ref: str | None = None
     input: Any = None
     raw_output: Any = None
     output: Any = None
+    cost_cents: int = 0
     error_code: str | None = None
     error_message: str | None = None
     attempt: int
