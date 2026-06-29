@@ -34,7 +34,7 @@ class TestFlowCRUD:
     """Tests for flow creation and lookup."""
 
     def test_create_flow(self):
-        """Creating a flow persists it with the given title, slug, and question."""
+        """Creating a flow persists it with the given title, slug, and description."""
         repo = _make_repo()
         flow = repo.create_flow("Test Flow", "test-flow", "What is the answer?")
 

@@ -1,4 +1,4 @@
-"""Unit tests for the runner tick engine, foreach loops, and questions.
+"""Unit tests for the runner tick engine and foreach loops.
 
 These tests exercise the core state machine directly (no HTTP layer) using
 in-memory SQLite and the deterministic fake integrations.
@@ -11,6 +11,7 @@ import sqlite3
 import pytest
 
 from app.data.repository import TaskrRepository
+from app.errors.data import CostAmountInvalidError
 from app.logic.runner import TaskrRunner
 from app.logic.integrations.fake import FakeApiCaller, FakeHermesService
 
@@ -52,26 +53,24 @@ class TestTick:
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
         runner.tick()
-        questions = runner.repo.load_open_questions(run["run_id"])
-        runner.answer_question(questions[0]["question_id"], "yes")
-        runner.tick()
         assert runner.repo.load_run(run["run_id"])["status"] == "completed"
 
         result = runner.tick(run["run_id"])
         assert result == []
 
     def test_tick_global_advances_all_active(self):
-        """Global tick (no run_id) advances all running/paused runs."""
+        """Global tick (no run_id) advances all running runs."""
         runner = _make_runner()
         run1 = runner.create_run("soda-comparison")
         run2 = runner.create_run("soda-comparison")
 
         result = runner.tick()
 
-        # Both runs should have been advanced.
         assert len(result) == 2
         assert run1["run_id"] in result
         assert run2["run_id"] in result
+        assert runner.repo.load_run(run1["run_id"])["status"] == "completed"
+        assert runner.repo.load_run(run2["run_id"])["status"] == "completed"
 
     def test_tick_single_run_advances_only_target(self):
         """Targeted tick only advances the specified run."""
@@ -82,8 +81,10 @@ class TestTick:
         result = runner.tick(run1["run_id"])
 
         assert result == [run1["run_id"]]
+        assert runner.repo.load_run(run1["run_id"])["status"] == "completed"
         # run2 should still be in running status with pending node states.
         run2_states = runner.repo.load_node_states_for_run(run2["run_id"])
+        assert runner.repo.load_run(run2["run_id"])["status"] == "running"
         assert all(s["status"] == "pending" for s in run2_states)
 
 
@@ -100,29 +101,12 @@ class TestForeach:
         run = runner.create_run("soda-comparison")
         runner.tick()
 
-        # The demo flow's foreach iterates over two products (Coke, Fanta).
-        assert runner.repo.count_completed_iterations(run["run_id"]) >= 1
+        assert runner.repo.count_completed_iterations(run["run_id"]) == 2
 
-    def test_foreach_blocks_on_question(self):
-        """The foreach pauses the run when a child blocks on a question."""
+    def test_foreach_completes_directly(self):
+        """The foreach completes directly with the fake Hermes service."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        run_status = runner.repo.load_run(run["run_id"])["status"]
-        assert run_status == "paused"
-        assert runner.repo.load_open_questions(run["run_id"]) != []
-
-    def test_foreach_completes_after_answer(self):
-        """The foreach completes all iterations after the question is answered."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        questions = runner.repo.load_open_questions(run["run_id"])
-        assert len(questions) == 1
-
-        runner.answer_question(questions[0]["question_id"], "yes")
         runner.tick()
 
         run_status = runner.repo.load_run(run["run_id"])["status"]
@@ -134,9 +118,6 @@ class TestForeach:
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
         runner.tick()
-        questions = runner.repo.load_open_questions(run["run_id"])
-        runner.answer_question(questions[0]["question_id"], "yes")
-        runner.tick()
 
         assert runner.repo.count_duplicate_dispatches(run["run_id"]) == 0
 
@@ -145,94 +126,11 @@ class TestForeach:
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
         runner.tick()
-        questions = runner.repo.load_open_questions(run["run_id"])
-        runner.answer_question(questions[0]["question_id"], "yes")
-        runner.tick()
 
         states = runner.repo.load_node_states_for_run(run["run_id"])
         for s in states:
             assert s["status"] in ("completed", "failed"), \
                 f"Node state {s['node_state_id']} is non-terminal: {s['status']}"
-
-
-# ---------------------------------------------------------------------------
-# Questions
-# ---------------------------------------------------------------------------
-
-class TestQuestions:
-    """Tests for question handling."""
-
-    def test_open_question_has_prompt(self):
-        """The open question created during foreach has the expected prompt."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        questions = runner.repo.load_open_questions(run["run_id"])
-        assert len(questions) == 1
-        assert "Fanta" in questions[0]["prompt"]
-
-    def test_answer_changes_question_status(self):
-        """Answering a question marks it as answered."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        questions = runner.repo.load_open_questions(run["run_id"])
-        q_id = questions[0]["question_id"]
-
-        runner.answer_question(q_id, "No, use organic sources only.")
-
-        q = runner.repo.load_question(q_id)
-        assert q["status"] == "answered"
-        assert q["answer"] == "No, use organic sources only."
-        assert q["answered_at"] is not None
-
-    def test_answer_resumes_run(self):
-        """Answering a question sets the run back to running."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        questions = runner.repo.load_open_questions(run["run_id"])
-        runner.answer_question(questions[0]["question_id"], "yes")
-
-        run_status = runner.repo.load_run(run["run_id"])["status"]
-        assert run_status == "running"
-
-    def test_answer_sets_node_state_to_running(self):
-        """Answering a question sets the blocked node_state back to running."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        questions = runner.repo.load_open_questions(run["run_id"])
-        q_id = questions[0]["question_id"]
-        q = runner.repo.load_question(q_id)
-        state_before = runner.repo.load_node_state(q["fk_node_state_id"])
-        assert state_before["status"] == "blocked"
-
-        runner.answer_question(q_id, "yes")
-
-        state_after = runner.repo.load_node_state(q["fk_node_state_id"])
-        assert state_after["status"] == "running"
-
-    def test_answer_unknown_question_raises(self):
-        """Answering a non-existent question raises ValueError."""
-        runner = _make_runner()
-        with pytest.raises(ValueError, match="unknown question id"):
-            runner.answer_question("q-does-not-exist", "yes")
-
-    def test_no_open_questions_after_answer(self):
-        """After answering, no open questions remain for the run."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        questions = runner.repo.load_open_questions(run["run_id"])
-        runner.answer_question(questions[0]["question_id"], "yes")
-
-        assert runner.repo.load_open_questions(run["run_id"]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -260,16 +158,61 @@ class TestCreateRun:
 
         assert run["context"] == {"retailer": "Target"}
 
-    def test_create_unknown_flow_raises(self):
-        """Creating a run for an unknown flow slug raises ValueError."""
-        runner = _make_runner()
-        with pytest.raises(ValueError, match="unknown flow slug"):
-            runner.create_run("does-not-exist")
-
-    def test_create_run_status_is_running(self):
-        """A newly created run has status 'running'."""
+    def test_create_run_initializes_cost_tracking_to_zero(self):
+        """Creating a run initializes run and node cost columns to zero."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
 
-        assert run["status"] == "running"
-        assert run["started_at"] is not None
+        assert run["total_cost_cents"] == 0
+        states = runner.repo.load_node_states_for_run(run["run_id"])
+        assert states
+        assert all(s["cost_cents"] == 0 for s in states)
+
+    def test_repository_add_cost_helpers_increment_costs(self):
+        """Cost helper methods increment run and node cost columns."""
+        runner = _make_runner()
+        run = runner.create_run("soda-comparison")
+        state = runner.repo.load_node_states_for_run(run["run_id"])[0]
+
+        updated_run = runner.repo.add_run_cost(run["run_id"], 50)
+        updated_state = runner.repo.add_node_cost(state["node_state_id"], 50)
+
+        assert updated_run is not None
+        assert updated_run["total_cost_cents"] == 50
+        assert updated_state is not None
+        assert updated_state["cost_cents"] == 50
+
+    def test_save_node_state_persists_cost_cents(self):
+        """Saving a node state preserves cost_cents alongside runtime fields."""
+        runner = _make_runner()
+        run = runner.create_run("soda-comparison")
+        state = runner.repo.load_node_states_for_run(run["run_id"])[0]
+        state["cost_cents"] = 25
+
+        updated_state = runner.repo.save_node_state(state)
+
+        assert updated_state["cost_cents"] == 25
+
+    def test_repository_rejects_negative_cost_amounts(self):
+        """Cost helper methods reject negative amounts with a TaskrError subclass."""
+        runner = _make_runner()
+        run = runner.create_run("soda-comparison")
+        state = runner.repo.load_node_states_for_run(run["run_id"])[0]
+
+        with pytest.raises(CostAmountInvalidError):
+            runner.repo.add_run_cost(run["run_id"], -1)
+        with pytest.raises(CostAmountInvalidError):
+            runner.repo.add_node_cost(state["node_state_id"], -1)
+
+    def test_create_run_default_flow(self):
+        """Creating a run without a slug uses the default seeded flow."""
+        runner = _make_runner()
+        run = runner.create_run()
+
+        assert run["fk_flow_id"] == "flow-soda"
+
+    def test_create_run_unknown_flow_raises(self):
+        """Creating a run for an unknown flow raises ValueError."""
+        runner = _make_runner()
+        with pytest.raises(ValueError, match="unknown flow slug"):
+            runner.create_run("does-not-exist")

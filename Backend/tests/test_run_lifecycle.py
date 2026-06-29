@@ -45,19 +45,16 @@ class TestCancelRun:
         """Cancelling a running run sets status to cancelled."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        runner.tick()  # advance to paused (question blocks)
 
         result = runner.cancel_run(run["run_id"])
 
         assert result["status"] == "cancelled"
         assert result["finished_at"] is not None
-        assert result["pause_reason"] is None
 
     def test_cancel_marks_non_terminal_node_states(self):
         """All non-terminal node_states are marked cancelled."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        runner.tick()
 
         runner.cancel_run(run["run_id"])
 
@@ -70,22 +67,19 @@ class TestCancelRun:
         """Completed node_states are not touched by cancellation."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        runner.tick()  # Collect Products completes, then foreach blocks
+        runner.tick()  # Complete the direct fake flow.
 
-        runner.cancel_run(run["run_id"])
+        with pytest.raises(ValueError, match="already terminal"):
+            runner.cancel_run(run["run_id"])
 
         states = runner.repo.load_node_states_for_run(run["run_id"])
         completed = [s for s in states if s["status"] == "completed"]
-        assert len(completed) >= 1, "At least one node should be completed before cancel"
+        assert len(completed) >= 1, "At least one node should be completed"
 
     def test_cancel_already_terminal_raises(self):
         """Cancelling a completed run raises ValueError."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        # Run to completion: tick, answer, tick.
-        runner.tick()
-        questions = runner.repo.load_open_questions(run["run_id"])
-        runner.answer_question(questions[0]["question_id"], "yes")
         runner.tick()
 
         assert runner.repo.load_run(run["run_id"])["status"] == "completed"
@@ -97,7 +91,6 @@ class TestCancelRun:
         """Cancelling an already-cancelled run raises ValueError."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        runner.tick()
         runner.cancel_run(run["run_id"])
 
         with pytest.raises(ValueError, match="already terminal"):
@@ -113,7 +106,6 @@ class TestCancelRun:
         """A cancelled run is not advanced by subsequent ticks."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        runner.tick()
         runner.cancel_run(run["run_id"])
 
         result = runner.tick(run["run_id"])
@@ -131,7 +123,6 @@ class TestRetryRun:
         """Retry creates a new run with a different id."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        runner.tick()
         runner.cancel_run(run["run_id"])
 
         new_run = runner.retry_run(run["run_id"])
@@ -145,7 +136,6 @@ class TestRetryRun:
         """Retry copies the original run's context into the new run."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison", context={"retailer": "Walmart"})
-        runner.tick()
         runner.cancel_run(run["run_id"])
 
         new_run = runner.retry_run(run["run_id"])
@@ -156,7 +146,6 @@ class TestRetryRun:
         """The original run is not modified by retry."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        runner.tick()
         runner.cancel_run(run["run_id"])
 
         runner.retry_run(run["run_id"])
@@ -174,7 +163,6 @@ class TestRetryRun:
         """The retried run has fresh pending node_states."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        runner.tick()
         runner.cancel_run(run["run_id"])
 
         new_run = runner.retry_run(run["run_id"])
@@ -215,20 +203,6 @@ class TestDeleteRun:
         states_after = runner.repo.load_node_states_for_run(run["run_id"])
         assert states_after == []
 
-    def test_delete_cascades_questions(self):
-        """Deleting a run removes questions attached to its node_states."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-        questions_before = runner.repo.load_open_questions(run["run_id"])
-        assert len(questions_before) > 0
-
-        runner.delete_run(run["run_id"])
-
-        # load_open_queries queries through node_states, so it should be empty.
-        questions_after = runner.repo.load_open_questions(run["run_id"])
-        assert questions_after == []
-
     def test_delete_unknown_run_raises(self):
         """Deleting a non-existent run raises ValueError."""
         runner = _make_runner()
@@ -239,9 +213,6 @@ class TestDeleteRun:
         """Deleting a completed run works."""
         runner = _make_runner()
         run = runner.create_run("soda-comparison")
-        runner.tick()
-        questions = runner.repo.load_open_questions(run["run_id"])
-        runner.answer_question(questions[0]["question_id"], "yes")
         runner.tick()
         assert runner.repo.load_run(run["run_id"])["status"] == "completed"
 

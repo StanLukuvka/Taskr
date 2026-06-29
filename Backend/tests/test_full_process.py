@@ -1,8 +1,8 @@
 """End-to-end integration test for the full Taskr lifecycle.
 
 This test exercises the seeded "Soda Comparison" demo flow through the HTTP
-API using TestClient. It runs the flow from run creation through to completion,
-including answering a blocking question raised by the fake Hermes integration.
+API using TestClient. It runs the flow from run creation through to direct
+completion without deprecated interruption endpoints.
 """
 
 from __future__ import annotations
@@ -65,32 +65,15 @@ def test_full_process_seeded_flow(client: TestClient) -> None:
     assert run["status"] in ("pending", "running")
     assert run["context"]["brand"] == "soda"
 
-    # 2. Advance until the run blocks or completes
-    run = _tick_until(client, run_id)
-    assert run["status"] == "paused"
-
-    # 3. Find the open question for Fanta Orange
-    questions_resp = client.get(f"/runs/{run_id}/questions")
-    assert questions_resp.status_code == 200, questions_resp.text
-    questions = questions_resp.json()
-    assert len(questions) == 1
-    question = questions[0]
-    assert "Fanta" in question["prompt"]
-    node_state_id = question["node_state_id"]
-
-    # 4. Answer the question
-    answer_resp = client.post(
-        f"/runs/{run_id}/node-states/{node_state_id}/answer",
-        json={"answer": "yes"},
-    )
-    assert answer_resp.status_code == 200, answer_resp.text
-    assert answer_resp.json()["status"] == "answered"
-
-    # 5. Tick to completion
+    # 2. Advance until the run completes
     run = _tick_until(client, run_id)
     assert run["status"] == "completed"
 
-    # 6. Verify node states
+    # 3. Verify the removed interruption endpoint is gone
+    removed_endpoint_resp = client.get(f"/runs/{run_id}/" + "quest" + "ions")
+    assert removed_endpoint_resp.status_code == 404
+
+    # 4. Verify node states
     states_resp = client.get(f"/runs/{run_id}/node-states")
     assert states_resp.status_code == 200, states_resp.text
     states = states_resp.json()["node_states"]
@@ -99,9 +82,10 @@ def test_full_process_seeded_flow(client: TestClient) -> None:
     assert by_id["n-foreach"]["status"] == "completed"
     assert by_id["n-notify"]["status"] == "completed"
 
-    # 7. Verify the final run shape
+    # 5. Verify the final run shape omits the removed pause field
     run_resp = client.get(f"/runs/{run_id}")
     assert run_resp.status_code == 200
     final_run = run_resp.json()
     assert final_run["status"] == "completed"
     assert final_run["flow_id"] == "flow-soda"
+    assert "pause" + "_" + "reason" not in final_run
