@@ -1,8 +1,8 @@
 """FastAPI exception handlers for Taskr domain errors.
 
-Registers a single catch-all handler for TaskrError that converts
-domain exceptions into JSON responses with the appropriate HTTP
-status code.
+Registers a handler for TaskrError that converts domain exceptions into JSON
+responses with the appropriate HTTP status code. Generic exception logging is
+left to ASGI/uvicorn (or FastAPI's default 500 handler) so errors are not hidden.
 """
 
 from fastapi import FastAPI, Request
