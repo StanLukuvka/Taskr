@@ -47,28 +47,6 @@ class NodeStateNotFoundError(TaskrError):
     detail = "Node state not found"
 
 
-# ── Question errors ─────────────────────────────────────────
-
-class QuestionNotFoundError(TaskrError):
-    status_code = 404
-    detail = "Question not found"
-
-
-class MissingNodeStateForQuestionError(TaskrError):
-    status_code = 404
-    detail = "Missing node state for question"
-
-
-class MissingRunForQuestionError(TaskrError):
-    status_code = 404
-    detail = "Missing run for question"
-
-
-class NoOpenQuestionError(TaskrError):
-    status_code = 400
-    detail = "No open question for node state"
-
-
 class RunRestartTargetError(TaskrError):
     """Raised when the restart_from target node is invalid."""
 
