@@ -216,6 +216,19 @@ class TaskrRepository:
             """,
             (run_id, flow_id, flow_version_id, self._json(context or {})),
         )
+    def add_run_cost(self, run_id: str, amount_cents: int) -> dict[str, Any] | None:
+        """Add a non-negative cost amount to a run's total cost."""
+        if amount_cents < 0:
+            raise CostAmountInvalidError(entity_id=run_id)
+        self.conn.execute(
+            """
+            UPDATE RUN
+            SET total_cost_cents = total_cost_cents + ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE run_id = ?
+            """,
+            (amount_cents, run_id),
+        )
         self.conn.commit()
         return self.load_run(run_id)
 
@@ -639,6 +652,22 @@ class TaskrRepository:
         )
         self.conn.commit()
         return self.load_node_state(state_id)
+
+    def add_node_cost(self, node_state_id: str, amount_cents: int) -> dict[str, Any] | None:
+        """Add a non-negative cost amount to a node state's cost total."""
+        if amount_cents < 0:
+            raise CostAmountInvalidError(entity_id=node_state_id)
+        self.conn.execute(
+            """
+            UPDATE NODE_STATE
+            SET cost_cents = cost_cents + ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE node_state_id = ?
+            """,
+            (amount_cents, node_state_id),
+        )
+        self.conn.commit()
+        return self.load_node_state(node_state_id)
 
     def load_node_state(self, node_state_id: str) -> dict[str, Any] | None:
         """Fetch a single node_state by id."""
