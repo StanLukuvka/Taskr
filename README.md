@@ -68,26 +68,17 @@ Persistent-business-operation graphs are useful because:
 - **Payment is sometimes part of the work.** Some integrations need budget. Taskr can gate paid integrations against a per-run budget and use Stripe to replenish those budgets when the demo is configured for it.
 - **Agents sometimes need to think.** Hermes workers are treated as asynchronous nodes that complete, fail, or block on external review.
 
-```text
-                 Persistent question
-                          │
-                          ▼
-                  ┌───────────────┐
-                  │     Flow      │   reusable recipe
-                  └───────┬───────┘
-                          │
-                          ▼
-                  ┌───────────────┐
-                  │      Run      │   one execution, one context, one budget
-                  └───────┬───────┘
-                          │
-                ┌─────────┴─────────┐
-                ▼                   ▼
-         NodeState #1         NodeState #2     ... every step stored and recoverable
-            │                       │
-            ▼                       ▼
-        api / hermes            api / hermes    ... integrations return, fail, or block
-```
+---
+
+## Hermes integration
+
+Taskr talks to Hermes over API, not as a local plugin.
+
+> Run it on NemoClaw, local, a $5 VPS, a GPU cluster, or serverless infrastructure that costs nearly nothing when idle. 
+>
+> — [Hermes README](https://hermes-agent.nousresearch.com/)
+
+For hackathon demos and GPU workloads this means Taskr's agent nodes can run on [NVIDIA NeMo Claw](https://www.nvidia.com/en-au/ai/nemoclaw/): a serverless agent runtime that deploys anywhere without your own container. The Hermes worker endpoint is configured as a normal Taskr binding — the runner schedules the task, polls for completion, and stores the result like any other node state.
 
 ---
 
