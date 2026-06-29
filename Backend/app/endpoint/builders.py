@@ -166,25 +166,7 @@ def build_flow_version_response(
     }
 
 
-# ── Question & list item builders ───────────────────────────
-
-def build_question_response(q: dict[str, Any]) -> dict[str, Any]:
-    """Build a public QuestionResponse dictionary from a raw question record.
-
-    Args:
-        q: The raw question record from the repository.
-
-    Returns:
-        A dictionary matching the QuestionResponse model.
-    """
-    return {
-        "id": q["question_id"],
-        "node_state_id": q["fk_node_state_id"],
-        "prompt": q.get("prompt", ""),
-        "options": q.get("options"),
-        "status": q.get("status", "open"),
-        "created_at": q.get("created_at"),
-    }
+# ── Run list item builders ──────────────────────────────────
 
 
 def build_run_list_item(run: dict[str, Any]) -> dict[str, Any]:
