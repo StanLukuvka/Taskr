@@ -604,59 +604,6 @@ class TaskrRunner:
             raise RunNotFoundError(f"unknown run id: {run_id}", entity_id=run_id)
         self.repo.delete_run(run_id)
 
-    # ── Question handling ──────────────────────────────────────────
-
-    def answer_question(self, question_id: str, answer: str) -> None:
-        """Record an answer for a question and resume the related run.
-
-        This method validates the question, forwards the answer to the Hermes
-        service when the question was created from a Hermes task, persists the
-        answer, and transitions the node_state and run back to ``running`` so
-        the next tick can continue.
-
-        Parameters
-        ----------
-        question_id : str
-            The id of the question being answered.
-        answer : str
-            The answer provided by the user.
-
-        Raises
-        ------
-        QuestionNotFoundError
-            If the question does not exist.
-        MissingNodeStateForQuestionError
-            If the node_state referenced by the question cannot be found.
-        MissingRunForQuestionError
-            If the run referenced by the node_state cannot be found.
-        """
-        question = self.repo.load_question(question_id)
-        if not question:
-            raise QuestionNotFoundError(f"unknown question id: {question_id}", entity_id=question_id)
-
-        state = self.repo.load_node_state(question["fk_node_state_id"])
-        if not state:
-            raise MissingNodeStateForQuestionError(f"missing node state for question: {question_id}", entity_id=question_id)
-
-        run = self.repo.load_run(state["fk_run_id"])
-        if not run:
-            raise MissingRunForQuestionError(f"missing run for question: {question_id}", entity_id=question_id)
-
-        if question.get("hermes_task_id"):
-            self.hermes.answer_question(question["hermes_task_id"], answer)
-
-        question["answer"] = answer
-        question["status"] = "answered"
-        question["answered_at"] = self._now()
-        self.repo.save_question(question)
-
-        state["status"] = "running"
-        self.repo.save_node_state(state)
-
-        run["status"] = "running"
-        run["pause_reason"] = None
-        self.repo.save_run(run)
-
     # ── Run control extensions ──────────────────────────────────────────
 
     def restart_from(self, run_id: str, node_id: str) -> dict[str, Any]:
