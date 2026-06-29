@@ -156,58 +156,6 @@ class RunActionResponse(BaseModel):
     run_id: str | None = None
 
 
-class QuestionResponse(BaseModel):
-    """Public representation of a question raised during node execution.
-
-    Attributes:
-        id: Unique identifier for the question.
-        node_state_id: Identifier of the node state that raised the question.
-        prompt: Text prompt shown to the user.
-        options: Optional list of selectable options or structured choices.
-        status: Current status of the question (e.g., "open", "answered").
-        created_at: ISO timestamp when the question was created.
-    """
-
-    id: str
-    node_state_id: str
-    prompt: str
-    options: Any = None
-    status: str
-    created_at: str | None = None
-
-
-class NodeStateQuestionsResponse(BaseModel):
-    """Wrapper for a list of questions on a node state.
-
-    Attributes:
-        questions: The list of question records.
-    """
-
-    questions: list[QuestionResponse] = []
-
-
-class AnswerRequest(BaseModel):
-    """Payload used to answer a question that has paused a node state.
-
-    Attributes:
-        answer: The answer text supplied by the caller.
-    """
-
-    answer: str
-
-
-# ── Question models ─────────────────────────────────────────
-
-class AnswerResponse(BaseModel):
-    """Response returned after answering a question.
-
-    Attributes:
-        status: The answer status string.
-    """
-
-    status: str
-
-
 class RestartFromRequest(BaseModel):
     """Payload to restart a run from a specific flow node.
 
