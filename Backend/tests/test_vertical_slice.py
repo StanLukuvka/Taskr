@@ -29,7 +29,7 @@ def _make_repo() -> TaskrRepository:
     return TaskrRepository(conn)
 
 
-def test_run_completes_without_interruption_pause():
+def test_run_completes_without_interruption():
     """End-to-end state machine test using the demo soda-comparison flow."""
     repo = _make_repo()
     api = FakeApiCaller()
