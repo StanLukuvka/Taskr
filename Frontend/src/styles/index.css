@@ -1,0 +1,50 @@
+/* FLOW-PRODUCED: /agent/projects/taskr/Frontend/.hermes/plans/2026-06-30_m1-visual-cleanup.md */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+@import "../../taskr-icon-kit/taskr-icons.css";
+
+@theme {
+  --color-bg-1: #041c1c;
+  --color-bg-2: #062626;
+  --color-bg-3: #083131;
+  --color-bg-4: #0a3a3a;
+  --color-text: #ffe6cb;
+  --color-text-muted: #b8a48b;
+  --color-text-faint: #7b8988;
+  --color-accent: #ffac02;
+  --color-green: #4ade80;
+  --color-yellow: #ffbd38;
+  --color-red: #fb4d56;
+  --color-blue: #6ec1e4;
+  --color-purple: #c084fc;
+  --color-cyan: #67e8f9;
+  --color-amber: #fbbf24;
+  --color-border: #2a3838;
+  --color-border-strong: #4a5756;
+  --color-primary: #d7a63f;
+  --color-card: #062626;
+  --color-foreground: #ffe6cb;
+  --color-muted-foreground: #b8a48b;
+  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+body {
+  background-color: var(--color-bg-1);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-mono);
+  }
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+  }
+}
