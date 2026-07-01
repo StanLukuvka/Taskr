@@ -17,21 +17,6 @@ Some questions are simple. Some run once. Some run forever, with answers that dr
 
 Taskr gives those questions a home. It turns them into durable flows — pipelines of integrations, decisions, and handoffs — and runs them until they settle.
 
-The flow below is fully wired end-to-end and runnable from the workbench today.
-
----
-
-## 30-second demo: compare drink prices and generate a diagram
-
-A concrete flow that runs end-to-end in the workbench:
-
-1. **Scrape product data** — fetch price and image from a product URL via an API integration.
-2. **Collect opinions** — call a Hermes agent to search for and summarize 2-3 real customer review quotes.
-3. **Design the infographic** — call another Hermes agent to produce an image-generation prompt and layout spec.
-4. **Check budget, then "generate"** — verify the run's budget, dispatch a fake image-generation API call, and return the final prompt as the artifact.
-
-Every step, every cost, every input, and every output is stored. You can inspect the run, retry it, or cancel it at any point.
-
 ---
 
 ## What Taskr does
