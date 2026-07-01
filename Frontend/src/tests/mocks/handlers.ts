@@ -80,6 +80,7 @@ export const handlers = [
           status: r.status,
           flow_id: r.flow_id,
           flow_version_id: r.flow_version_id,
+          context: r.context,
           total_cost_cents: r.total_cost_cents,
           created_at: r.created_at,
           started_at: r.started_at,

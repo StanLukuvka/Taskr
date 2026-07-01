@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { label: 'Runs', to: '/runs' },
   { label: 'Flows', to: '/flows' },
   { label: 'Integrations', to: '/integrations' },
+  { label: 'Budget', to: '/budget' },
 ];
 
 export default function App() {
@@ -39,7 +40,7 @@ export default function App() {
         </nav>
       </header>
       {/* Main content */}
-      <main className="p-6">
+      <main>
         <Outlet />
       </main>
     </div>

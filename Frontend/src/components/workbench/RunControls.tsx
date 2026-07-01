@@ -32,7 +32,7 @@ export function RunControls({ onRefresh, runId, status }: RunControlsProps) {
           void tickMutation.mutateAsync(runId).then(() => onRefresh());
         }}
       >
-        {tickMutation.isPending ? 'Ticking…' : 'Tick'}
+        {terminal ? 'Run' : tickMutation.isPending ? 'Running…' : 'Running…'}
       </Button>
       <Button
         variant="secondary"

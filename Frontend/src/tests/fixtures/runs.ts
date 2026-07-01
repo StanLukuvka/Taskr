@@ -76,6 +76,7 @@ export function makeRunItem(overrides: Partial<RunListItem> = {}): RunListItem {
     status: baseRun.status,
     flow_id: baseRun.flow_id,
     flow_version_id: baseRun.flow_version_id,
+    context: baseRun.context,
     total_cost_cents: baseRun.total_cost_cents,
     created_at: baseRun.created_at,
     started_at: baseRun.started_at,

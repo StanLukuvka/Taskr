@@ -1,11 +1,13 @@
 // FLOW-PRODUCED: /agent/projects/taskr/Frontend/.hermes/plans/2026-06-30_m2-flows-workbench.md
 import { useEffect, useMemo } from 'react';
 import { Link, useParams } from 'react-router';
+import { BudgetPanel } from '@/components/workbench/BudgetPanel';
 import { NodeTree } from '@/components/flows/NodeTree';
 import { RunControls } from '@/components/workbench/RunControls';
 import { RunInspectorPane } from '@/components/workbench/RunInspectorPane';
 import { WorkbenchConsole } from '@/components/workbench/WorkbenchConsole';
-import { useFlowVersion, useRun, useFlows } from '@/hooks/use-taskr';
+import { useFlowVersion, useRun, useFlows, useTickRun, isTerminalRun } from '@/hooks/use-taskr';
+import { useBudgetSettings } from '@/hooks/use-budget-settings';
 import { useWorkbenchStore } from '@/stores/workbench-store';
 import type {
   FlowNode,
@@ -44,6 +46,8 @@ export function WorkbenchView() {
   const { runId } = useParams();
   const runQuery = useRun(runId);
   const run = runQuery.data;
+  const tickMutation = useTickRun();
+  const budgetSettings = useBudgetSettings();
   const flowVersionQuery = useFlowVersion(run?.flow_version_id);
   const flowVersion = flowVersionQuery.data;
   const flowsQuery = useFlows();
@@ -160,11 +164,58 @@ export function WorkbenchView() {
     useWorkbenchStore.getState().reset();
   }, [runId]);
 
+  // Auto-tick demo: once the run is non-terminal, tick it every 5s until it finishes.
   useEffect(() => {
-    if (!selectedNodeStateId && topLevelStates.length > 0) {
-      setSelectedNodeStateId(topLevelStates[0].id);
+    if (!runId || !run || isTerminalRun(run)) return;
+
+    const interval = setInterval(() => {
+      tickMutation.mutate(runId);
+    }, 5_000);
+
+    return () => clearInterval(interval);
+  }, [runId, run?.status]);
+
+  useEffect(() => {
+    if (topLevelStates.length === 0) return;
+
+    const order: NodeStateStatus[] = ['running', 'dispatching', 'ready', 'pending', 'completed', 'failed', 'cancelled'];
+    const current = selectedNodeStateId ? nodeStateMap.get(selectedNodeStateId) : undefined;
+    const currentIsTerminal = current ? ['completed', 'failed', 'cancelled'].includes(current.status) : false;
+
+    const rank = (state: NodeState) => {
+      const index = order.indexOf(state.status);
+      return index === -1 ? 99 : index;
+    };
+
+    const ranked = topLevelStates.slice().sort((left, right) => {
+      const diff = rank(left) - rank(right);
+      if (diff !== 0) return diff;
+      return left.id.localeCompare(right.id);
+    });
+
+    const active = ranked[0];
+    const activeIsTerminal = ['completed', 'failed', 'cancelled'].includes(active.status);
+
+    if (!selectedNodeStateId) {
+      setSelectedNodeStateId(active.id);
+    } else if (currentIsTerminal && !activeIsTerminal) {
+      // Follow the run: the current selection is done and there's a more active node.
+      setSelectedNodeStateId(active.id);
+    } else if (currentIsTerminal && activeIsTerminal) {
+      // Run is fully terminal; show the last completed node instead of the first one.
+      const lastCompleted = topLevelStates
+        .filter((state) => state.status === 'completed')
+        .sort((left, right) => {
+          const leftOrd = flowNodeMap.get(left.node_id)?.ord ?? 0;
+          const rightOrd = flowNodeMap.get(right.node_id)?.ord ?? 0;
+          return leftOrd - rightOrd;
+        })
+        .pop();
+      if (lastCompleted && current?.id !== lastCompleted.id) {
+        setSelectedNodeStateId(lastCompleted.id);
+      }
     }
-  }, [selectedNodeStateId, setSelectedNodeStateId, topLevelStates]);
+  }, [selectedNodeStateId, setSelectedNodeStateId, topLevelStates, nodeStateMap]);
 
   useEffect(() => {
     if (selectedNodeState && selectedNodeState.loop_iteration_id && !selectedIterationId) {
@@ -210,6 +261,12 @@ export function WorkbenchView() {
               <span>Flow: {run.flow_id}</span>
               <span>Version: {run.flow_version_id}</span>
             </div>
+            <BudgetPanel
+              totalCostCents={run.total_cost_cents ?? 0}
+              budgetCents={budgetSettings.budgetCents}
+              threshold={budgetSettings.threshold}
+              label={budgetSettings.label}
+            />
           </div>
           <RunControls
             onRefresh={() => runQuery.refetch()}
@@ -246,6 +303,8 @@ export function WorkbenchView() {
           onSelectTab={setActiveTab}
           selectedIterationId={selectedIterationId}
           selectedNodeState={selectedNodeState}
+          nodeStates={run.node_states}
+          totalCostCents={run.total_cost_cents ?? 0}
         />
       </section>
 

@@ -28,15 +28,25 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   if (!response.ok) {
     let detail = `Request failed with status ${response.status}`;
     let entityId: string | undefined;
+    const body = await response.text();
+    const bodyPreview = `${body.slice(0, 200)}${body.length > 200 ? '…' : ''}`;
+
+    if (body.trim().toLowerCase().startsWith('<!doctype') || body.trim().startsWith('<')) {
+      const error = new Error(
+        `Backend returned HTML for ${path}. Is the backend running and reachable? (status ${response.status})`
+      ) as ApiError;
+      error.status = response.status;
+      error.entityId = entityId;
+      throw error;
+    }
 
     try {
-      const payload = (await response.json()) as ApiErrorShape;
+      const payload = JSON.parse(body) as ApiErrorShape;
       detail = payload.detail ?? detail;
       entityId = payload.entity_id;
     } catch {
-      const body = await response.text();
       if (body) {
-        detail = body;
+        detail = `${detail}: ${bodyPreview}`;
       }
     }
 
@@ -50,5 +60,19 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
     return undefined as T;
   }
 
-  return (await response.json()) as T;
+  const body = await response.text();
+  try {
+    return JSON.parse(body) as T;
+  } catch {
+    if (body.trim().toLowerCase().startsWith('<!doctype') || body.trim().startsWith('<')) {
+      const error = new Error(
+        `Backend returned HTML for ${path}. Is the backend running and reachable? (status ${response.status})`
+      ) as ApiError;
+      error.status = response.status;
+      throw error;
+    }
+    const error = new Error(`Invalid JSON response from ${path}: ${body.slice(0, 200)}${body.length > 200 ? '…' : ''}`) as ApiError;
+    error.status = response.status;
+    throw error;
+  }
 }

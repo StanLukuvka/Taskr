@@ -7,6 +7,7 @@ import { RunsListView } from './components/runs/RunsListView';
 import { FlowsListView } from './components/flows/FlowsListView';
 import { FlowDetailView } from './components/flows/FlowDetailView';
 import { WorkbenchView } from './components/workbench/WorkbenchView';
+import { BudgetSettingsPage } from './pages/BudgetSettingsPage';
 
 export const router = createBrowserRouter([
   {
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { path: 'flows/:slug', element: <FlowDetailView /> },
       { path: 'integrations', element: <IntegrationsListView /> },
       { path: 'integrations/:integrationId', element: <IntegrationDetailView /> },
+      { path: 'budget', element: <BudgetSettingsPage /> },
       {
         path: '*',
         element: (

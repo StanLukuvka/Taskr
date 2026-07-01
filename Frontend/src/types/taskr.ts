@@ -28,7 +28,7 @@ export type FlowNodeKind = 'api' | 'hermes' | 'foreach';
 export type FlowVersionStatus = 'draft' | 'active' | 'archived';
 export type BindingKind = 'api' | 'hermes';
 
-export type InspectorTab = 'overview' | 'input' | 'output' | 'native' | 'loop';
+export type InspectorTab = 'overview' | 'input' | 'output' | 'native' | 'loop' | 'budget';
 
 export interface ApiErrorShape {
   detail?: string;
@@ -79,18 +79,19 @@ export interface Run {
   node_states: NodeState[];
 }
 
-export type RunDetail = Run;
-
 export interface RunListItem {
   id: string;
   status: RunStatus;
   flow_id: string;
   flow_version_id: string;
   total_cost_cents: number;
+  context?: JsonValue | null;
   created_at: string | null;
   started_at: string | null;
   finished_at: string | null;
 }
+
+export type RunDetail = Run;
 
 export interface RunActionResponse {
   status: string;

@@ -1,6 +1,7 @@
 // FLOW-PRODUCED: /agent/projects/taskr/Frontend/.hermes/plans/2026-06-30_m1-visual-cleanup.md
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import { formatCurrencyCents } from '@/lib/formatters';
 import { formatDate } from '@/lib/utils';
 import { nodeStatusClasses as statusClasses } from '@/lib/status-styles';
 import type { NodeState } from '@/types/taskr';
@@ -67,6 +68,10 @@ export function NodeStateCard({ children, nodeState, onSelect, onRestart, onRetr
             <div className="mt-1 text-foreground/85">{formatDate(nodeState.updated_at)}</div>
           </div>
           <div>
+            <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Cost</div>
+            <div className="mt-1 text-foreground/85">{formatCurrencyCents(nodeState.cost_cents ?? 0)}</div>
+          </div>
+          <div className="md:col-span-2">
             <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Summary</div>
             <div className="mt-1 text-foreground/85">{summarize(nodeState)}</div>
           </div>

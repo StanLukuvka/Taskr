@@ -3,9 +3,10 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { formatDate } from '@/lib/utils';
-import { useCreateRun, useFlows, useRunList } from '@/hooks/use-taskr';
+import { useCreateRun, useRunList } from '@/hooks/use-taskr';
 import { runStatusClasses as statusClasses } from '@/lib/status-styles';
 import type { JsonValue, RunListItem } from '@/types/taskr';
+import { BudgetBadge } from '@/components/runs/BudgetBadge';
 
 function sortRuns(runs: RunListItem[]) {
   return [...runs].sort((left, right) => (right.created_at ?? '').localeCompare(left.created_at ?? ''));
@@ -14,14 +15,12 @@ function sortRuns(runs: RunListItem[]) {
 export function RunsListView() {
   const navigate = useNavigate();
   const runList = useRunList();
-  const flows = useFlows();
   const createRunMutation = useCreateRun();
   const [flowSlug, setFlowSlug] = useState('soda-comparison');
-  const [contextText, setContextText] = useState('{"retailer":"woolworths","category":"soda"}');
+  const [contextText, setContextText] = useState('{}');
   const [formError, setFormError] = useState<string | null>(null);
 
   const runs = useMemo(() => sortRuns(runList.data ?? []), [runList.data]);
-  const flowOptions = flows.data ?? [];
 
   async function handleCreateRun() {
     setFormError(null);
@@ -90,6 +89,7 @@ export function RunsListView() {
                   <tr>
                     <th className="px-3 py-2">Run</th>
                     <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Budget</th>
                     <th className="px-3 py-2">Created</th>
                     <th className="px-3 py-2">Flow version</th>
                     <th className="px-3 py-2 text-right">Open</th>
@@ -106,6 +106,9 @@ export function RunsListView() {
                         <span className={`inline-flex px-2.5 py-1 text-xs font-medium ring-1 ${statusClasses[run.status]}`}>
                           {run.status}
                         </span>
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <BudgetBadge run={run} />
                       </td>
                       <td className="px-3 py-2 align-top text-muted-foreground">{formatDate(run.created_at)}</td>
                       <td className="px-3 py-2 align-top text-muted-foreground">{run.flow_version_id}</td>
@@ -133,15 +136,8 @@ export function RunsListView() {
                 value={flowSlug}
                 onChange={(event) => setFlowSlug(event.target.value)}
               >
-                {flowOptions.length === 0 ? (
-                  <option value="soda-comparison">soda-comparison</option>
-                ) : (
-                  flowOptions.map((flow) => (
-                    <option key={flow.id} value={flow.slug}>
-                      {flow.slug}
-                    </option>
-                  ))
-                )}
+                <option value="soda-comparison">soda-comparison</option>
+                <option value="frontend-demo">frontend-demo</option>
               </select>
             </label>
             <label className="block space-y-2">
