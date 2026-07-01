@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from typing import Any
+
+import httpx
+import yaml
 
 from app.logic.integrations.result import IntegrationResult
 
@@ -12,18 +16,23 @@ OUTPUT_DIR = "/agent/output"
 
 
 class FakeApiCaller:
-    """Synchronous fake API integration with a deterministic poll path.
+    """Synchronous fake API integration with deterministic routing.
 
-    The demo flow uses file-based handoff in ``agent/output/<run_id>/``. Each
-    node reads the previous node's file and writes its own output file.
+    Demo flow (``product-image-prompt``) uses two fake API calls:
 
-    * ``https://fake.api/scrape`` — writes ``01_scrape.json``.
-    * ``https://fake.api/generate-image`` — writes ``04_image.json`` after a short delay.
-    * ``https://fake.api/budget-check`` — reads ``03_design.json`` and writes ``04_image.json``.
+    * ``https://fake.api/move-input-files`` — copies ``agent/output/product input/*``
+      to ``agent/output/hermes input/`` and returns ``{"moved": true}``.
+    * ``https://fake.api/generate-image`` — accepts a prompt and returns
+      ``{"success": true}`` (no image URL, just confirmation).
+
+    Legacy paths are kept for the original ``flow-soda`` tests.
     """
 
-    def __init__(self, *, image_delay: float = 2.0, scrape_delay_polls: int = 0) -> None:
-        """Initialize fake polling counters and the image-generation delay.
+    PRODUCT_INPUT_DIR = os.path.join(OUTPUT_DIR, "product input")
+    HERMES_INPUT_DIR = os.path.join(OUTPUT_DIR, "hermes input")
+
+    def __init__(self, *, image_delay: float = 0.0, scrape_delay_polls: int = 0) -> None:
+        """Initialize fake polling counters and optional image delay.
 
         ``scrape_delay_polls`` controls how many ``inspect`` calls the fake
         scrape binding returns ``running`` before completing. The default ``0``
@@ -58,6 +67,31 @@ class FakeApiCaller:
         self._poll_count[ref] = 0
         return IntegrationResult(status="running", external_ref=ref)
 
+    def _move_input_files(self, ref: str) -> IntegrationResult:
+        """Copy all files from ``product input`` to ``hermes input``."""
+        os.makedirs(self.HERMES_INPUT_DIR, exist_ok=True)
+        moved: list[str] = []
+        if os.path.isdir(self.PRODUCT_INPUT_DIR):
+            for filename in os.listdir(self.PRODUCT_INPUT_DIR):
+                src = os.path.join(self.PRODUCT_INPUT_DIR, filename)
+                if os.path.isfile(src):
+                    dst = os.path.join(self.HERMES_INPUT_DIR, filename)
+                    with open(src, "rb") as f:
+                        data = f.read()
+                    with open(dst, "wb") as f:
+                        f.write(data)
+                    moved.append(filename)
+        output = {"moved": True, "files": moved, "cost_cents": 1}
+        return IntegrationResult(status="completed", external_ref=ref, output=output, cost_cents=1)
+
+    def _generate_image_success(self, ref: str, input_data: dict[str, Any] | None) -> IntegrationResult:
+        """Image provider: simply confirms the prompt was received."""
+        if self._image_delay:
+            time.sleep(self._image_delay)
+        prompt = (input_data or {}).get("prompt")
+        output = {"success": True, "prompt": prompt, "cost_cents": 5}
+        return IntegrationResult(status="completed", external_ref=ref, output=output, cost_cents=5)
+
     def _complete(
         self,
         url: str,
@@ -66,6 +100,11 @@ class FakeApiCaller:
         input_data: dict[str, Any] | None = None,
     ) -> IntegrationResult:
         self._poll_count.pop(ref, None)
+        if url == "https://fake.api/move-input-files":
+            return self._move_input_files(ref)
+        if url == "https://fake.api/generate-image":
+            return self._generate_image_success(ref, input_data)
+        # Legacy: scrape and product infographic paths
         if url in ("https://fake.api/scrape", "https://fake.api/scrape-product"):
             output = {
                 "product": {
@@ -79,29 +118,6 @@ class FakeApiCaller:
             }
             self._write_file(run_id, "01_scrape.json", output)
             return IntegrationResult(status="completed", external_ref=ref, output=output, cost_cents=5)
-        if url == "https://fake.api/generate-image":
-            time.sleep(self._image_delay)
-            design = self._read_file(run_id, "03_design.json")
-            prompt = design.get("prompt")
-            budget_cents = int((input_data or {}).get("budget_cents") or 0)
-            spent_cents = int((input_data or {}).get("spent_cents") or 0)
-            cost_cents = 20
-            if budget_cents and spent_cents + cost_cents > budget_cents:
-                return IntegrationResult(
-                    status="failed",
-                    external_ref=ref,
-                    error_code="budget_exhausted",
-                    error_message="run budget exhausted before image generation",
-                    error_category="budget",
-                    retryable=False,
-                )
-            output = {
-                "image_url": "https://cdn.fake-images.io/pepsi-max-001.png",
-                "prompt": prompt,
-                "cost_cents": cost_cents,
-            }
-            self._write_file(run_id, "04_image.json", output)
-            return IntegrationResult(status="completed", external_ref=ref, output=output, cost_cents=cost_cents)
         if url == "https://fake.api/budget-check":
             design = self._read_file(run_id, "03_design.json")
             budget_cents = int((input_data or {}).get("budget_cents") or 0)
@@ -136,9 +152,9 @@ class FakeApiCaller:
 
         Routing is based on ``binding_config["url_template"]``:
 
-        * ``https://fake.api/scrape`` → completes immediately, writes ``01_scrape.json``.
-        * ``https://fake.api/generate-image`` → completes immediately, writes ``04_image.json``.
-        * ``https://fake.api/budget-check`` → completes immediately, writes ``04_budget_check.json``.
+        * ``https://fake.api/move-input-files`` → copies files and returns ``moved``.
+        * ``https://fake.api/generate-image`` → returns ``success: true``.
+        * ``https://fake.api/scrape`` / ``scrape-product`` → legacy demo product.
         * Any other URL with ``completion_mode == "poll"`` → returns a running
           result with a poll ref (legacy path retained for tests).
         """
@@ -149,9 +165,10 @@ class FakeApiCaller:
 
         url = (binding_config or {}).get("url_template", "")
         if url in (
+            "https://fake.api/move-input-files",
+            "https://fake.api/generate-image",
             "https://fake.api/scrape",
             "https://fake.api/scrape-product",
-            "https://fake.api/generate-image",
             "https://fake.api/budget-check",
         ):
             if self._scrape_delay_polls == 0 or url not in ("https://fake.api/scrape", "https://fake.api/scrape-product"):
@@ -189,12 +206,15 @@ class FakeApiCaller:
 class FakeHermesService:
     """Deterministic fake Hermes service that completes all tasks.
 
-    For the demo flow the fake service simulates agents that:
-    * search the internet for customer review quotes (``b-hermes-opinions``),
-    * design an image-generation prompt and layout (``b-hermes-design``).
+    For the demo flow the fake service simulates an agent that reads a product
+    JSON file from ``agent/output/hermes input/`` and returns an image
+    generation prompt. It also writes the prompt back to that directory so the
+    next node can use it if needed.
 
-    Each node reads and writes handoff files in ``agent/output/<run_id>/``.
+    A legacy fallback prompt is kept for the original ``flow-soda`` tests.
     """
+
+    HERMES_INPUT_DIR = os.path.join(OUTPUT_DIR, "hermes input")
 
     def __init__(self, delay_polls: int = 0) -> None:
         """Initialize internal tracking for task IDs.
@@ -206,29 +226,90 @@ class FakeHermesService:
         self._task_counter = 0
         self._poll_count: dict[str, int] = {}
         self._delay_polls = delay_polls
+        self._task_context: dict[str, tuple[dict[str, Any] | None, str | None]] = {}
 
-    def _run_dir(self, run_id: str | None) -> str:
-        return os.path.join(OUTPUT_DIR, run_id or "unknown")
-
-    def _read_file(self, run_id: str | None, filename: str) -> dict[str, Any]:
-        path = os.path.join(self._run_dir(run_id), filename)
+    def _read_hermes_input(self, filename: str) -> dict[str, Any]:
+        path = os.path.join(self.HERMES_INPUT_DIR, filename)
         if not os.path.exists(path):
             return {}
         with open(path) as f:
             return json.load(f)
 
-    def _write_file(self, run_id: str | None, filename: str, data: dict[str, Any]) -> None:
-        run_dir = self._run_dir(run_id)
-        os.makedirs(run_dir, exist_ok=True)
-        path = os.path.join(run_dir, filename)
+    def _write_hermes_input(self, filename: str, data: dict[str, Any]) -> None:
+        os.makedirs(self.HERMES_INPUT_DIR, exist_ok=True)
+        path = os.path.join(self.HERMES_INPUT_DIR, filename)
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
 
-    def _task_output(self, inputs: dict[str, Any]) -> IntegrationResult:
+    def _task_output(self, inputs: dict[str, Any], binding_config: dict[str, Any] | None, run_id: str | None) -> IntegrationResult:
         self._task_counter += 1
         task_id = f"ht-{self._task_counter}"
         self._poll_count[task_id] = 0
+        self._task_context[task_id] = (binding_config, run_id)
         return IntegrationResult(status="running", external_ref=task_id)
+
+    def _read_product(self) -> dict[str, Any]:
+        """Read ``product.json`` from ``hermes input`` if present."""
+        data = self._read_hermes_input("product.json")
+        if isinstance(data, dict):
+            return data
+        return {}
+
+    def _read_hermes_input_text(self, filename: str) -> str:
+        """Read a text file from ``hermes input`` if present."""
+        path = os.path.join(self.HERMES_INPUT_DIR, filename)
+        if not os.path.exists(path):
+            return ""
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as f:
+                return f.read()
+        except Exception:
+            return ""
+
+    def _find_image_in_hermes_input(self) -> str | None:
+        """Return the first image filename found in ``hermes input``."""
+        if not os.path.isdir(self.HERMES_INPUT_DIR):
+            return None
+        for filename in os.listdir(self.HERMES_INPUT_DIR):
+            if filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
+                return filename
+        return None
+
+    def _load_llm_config(self) -> dict[str, str]:
+        """Read Hermes local config for the LLM endpoint credentials."""
+        paths = [
+            "/root/.hermes/config.yaml",
+            os.path.expanduser("~/.hermes/config.yaml"),
+        ]
+        for path in paths:
+            if os.path.exists(path):
+                with open(path) as f:
+                    cfg = yaml.safe_load(f)
+                model = cfg.get("model", {})
+                return {
+                    "base_url": model.get("base_url", ""),
+                    "api_key": model.get("api_key", ""),
+                    "model": model.get("default", "kimi-k2.7-code"),
+                }
+        return {}
+
+    def _generate_prompt(self, product: dict[str, Any]) -> str:
+        """Return the canned Hermes image-prompt output for the demo.
+
+        This is a fixed string — the fake Hermes agent "inspects" the moved
+        files and "returns" this prompt word for word.
+        """
+        return (
+            "Create image\n"
+            "Input summary - Product data: Pepsi Max 1.5L, NZ $1.99 (was $4.49, "
+            "save $2.50), 1.33/L. No sugar, maximum taste, low calories. Ingredients "
+            "include carbonated water, colour 150d, sweeteners 951/950, caffeine, "
+            "phenylalanine present. Made in NZ from local and imported ingredients. - "
+            "Image: studio hero shot of a 1.5L Pepsi Max bottle, black cap, dark cola, "
+            "label with black/blue dot-matrix pattern, Pepsi globe, \"MAX TASTE ZERO "
+            "SUGAR\" above the logo, \"PEPSI\" across the globe, \"MAX\" in red below, "
+            "clean white background, bright commercial product lighting."
+        )
 
     def _complete(
         self,
@@ -239,35 +320,13 @@ class FakeHermesService:
     ) -> IntegrationResult:
         self._poll_count.pop(task_id, None)
         binding_id = (binding_config or {}).get("binding_id") or (binding_config or {}).get("fk_binding_id")
-        product = (self._read_file(run_id, "01_scrape.json") or {}).get("product", {"name": "Pepsi Max"})
 
-        if binding_id == "b-hermes-opinions":
-            output = {
-                "quotes": [
-                    f"'{product['name']} is the perfect zero-sugar pick-me-up.' – Jane D.",
-                    f"'I love the crisp taste of {product['name']} over regular cola.' – Alex R.",
-                    f"'{product['name']} is my go-to afternoon soda.' – Sam T.",
-                ],
-                "cost_cents": 10,
-            }
-            self._write_file(run_id, "02_opinions.json", output)
-            return IntegrationResult(status="completed", external_ref=task_id, output=output, cost_cents=10)
-
-        if binding_id == "b-hermes-design":
-            quotes = (self._read_file(run_id, "02_opinions.json") or {}).get("quotes", [])
-            quote_texts = [q.split('–')[0].strip("'\"") for q in quotes[:2]]
-            prompt = (
-                f"A vibrant infographic-style advertisement for {product['name']}, "
-                f"featuring the product can, a bold headline, and customer quotes: "
-                f"{'; '.join(quote_texts)}. "
-                "Bright blue and silver palette, clean modern layout, studio lighting, high detail."
-            )
-            output = {
-                "prompt": prompt,
-                "layout": "vertical 1080x1920: headline top, product image center, quote cards bottom",
-                "cost_cents": 10,
-            }
-            self._write_file(run_id, "03_design.json", output)
+        # Demo binding: generate an image prompt from the product file.
+        if binding_id == "b-hermes-generate-image-prompt":
+            product = self._read_product()
+            prompt = self._generate_prompt(product)
+            self._write_hermes_input("prompt.json", {"prompt": prompt})
+            output = {"prompt": prompt, "cost_cents": 10}
             return IntegrationResult(status="completed", external_ref=task_id, output=output, cost_cents=10)
 
         # Legacy fallback for the original soda flow
@@ -294,12 +353,13 @@ class FakeHermesService:
     ) -> IntegrationResult:
         """Create a fake research/design task."""
         if self._delay_polls > 0:
-            return self._task_output(inputs)
+            return self._task_output(inputs, binding_config, run_id)
         return self._complete(self._next_task_id(), binding_config, run_id=run_id)
 
     def inspect_task(self, task_id: str) -> IntegrationResult:
         """Inspect a previously created task."""
         self._poll_count[task_id] = self._poll_count.get(task_id, 0) + 1
         if self._poll_count[task_id] >= self._delay_polls:
-            return self._complete(task_id)
+            binding_config, run_id = self._task_context.pop(task_id, (None, None))
+            return self._complete(task_id, binding_config, run_id=run_id)
         return IntegrationResult(status="running", external_ref=task_id)
