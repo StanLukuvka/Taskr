@@ -17,6 +17,8 @@ Some questions are simple. Some run once. Some run forever, with answers that dr
 
 Taskr gives those questions a home. It turns them into durable flows — pipelines of integrations, decisions, and handoffs — and runs them until they settle.
 
+The flow below is fully wired end-to-end and runnable from the workbench today.
+
 ---
 
 ## 30-second demo: compare drink prices and generate a diagram
@@ -71,7 +73,7 @@ Persistent-business-operation graphs are useful because:
 
 - **Questions stay alive.** "Is our catalogue accurate within 24 hours?" does not end after one HTTP call. It lives for months.
 - **Failure is normal.** APIs flake, agents get stuck, lists are longer than expected. Nodes can fail, be retried, or be cancelled independently.
-- **Payment is sometimes part of the work.** Some integrations need budget. Taskr can gate paid integrations against a per-run budget and use Stripe to replenish those budgets when the demo is configured for it.
+- **Payment is sometimes part of the work.** Some integrations need budget. Taskr gates paid integrations against a per-run budget, so a node can fail cleanly instead of an agent spending past its limit. Stripe is wired in to replenish that budget.
 - **Agents sometimes need to think.** Hermes workers are treated as asynchronous nodes that complete, fail, or block on external review.
 
 ---
