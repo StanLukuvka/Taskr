@@ -2,12 +2,8 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from typing import Any
-
-import httpx
-import yaml
 
 from app.logic.integrations.result import IntegrationResult
 
@@ -248,52 +244,7 @@ class FakeHermesService:
         self._task_context[task_id] = (binding_config, run_id)
         return IntegrationResult(status="running", external_ref=task_id)
 
-    def _read_product(self) -> dict[str, Any]:
-        """Read ``product.json`` from ``hermes input`` if present."""
-        data = self._read_hermes_input("product.json")
-        if isinstance(data, dict):
-            return data
-        return {}
-
-    def _read_hermes_input_text(self, filename: str) -> str:
-        """Read a text file from ``hermes input`` if present."""
-        path = os.path.join(self.HERMES_INPUT_DIR, filename)
-        if not os.path.exists(path):
-            return ""
-        try:
-            with open(path, encoding="utf-8", errors="ignore") as f:
-                return f.read()
-        except Exception:
-            return ""
-
-    def _find_image_in_hermes_input(self) -> str | None:
-        """Return the first image filename found in ``hermes input``."""
-        if not os.path.isdir(self.HERMES_INPUT_DIR):
-            return None
-        for filename in os.listdir(self.HERMES_INPUT_DIR):
-            if filename.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".gif")):
-                return filename
-        return None
-
-    def _load_llm_config(self) -> dict[str, str]:
-        """Read Hermes local config for the LLM endpoint credentials."""
-        paths = [
-            "/root/.hermes/config.yaml",
-            os.path.expanduser("~/.hermes/config.yaml"),
-        ]
-        for path in paths:
-            if os.path.exists(path):
-                with open(path) as f:
-                    cfg = yaml.safe_load(f)
-                model = cfg.get("model", {})
-                return {
-                    "base_url": model.get("base_url", ""),
-                    "api_key": model.get("api_key", ""),
-                    "model": model.get("default", "kimi-k2.7-code"),
-                }
-        return {}
-
-    def _generate_prompt(self, product: dict[str, Any]) -> str:
+    def _generate_prompt(self) -> str:
         """Return the canned Hermes image-prompt output for the demo.
 
         This is a fixed string — the fake Hermes agent "inspects" the moved
@@ -323,8 +274,7 @@ class FakeHermesService:
 
         # Demo binding: generate an image prompt from the product file.
         if binding_id == "b-hermes-generate-image-prompt":
-            product = self._read_product()
-            prompt = self._generate_prompt(product)
+            prompt = self._generate_prompt()
             self._write_hermes_input("prompt.json", {"prompt": prompt})
             output = {"prompt": prompt, "cost_cents": 10}
             return IntegrationResult(status="completed", external_ref=task_id, output=output, cost_cents=10)

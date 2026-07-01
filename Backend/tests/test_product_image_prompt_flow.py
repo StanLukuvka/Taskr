@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import sqlite3
 
 import pytest
@@ -23,7 +22,6 @@ from app.logic.integrations.fake import FakeApiCaller, FakeHermesService
 from app.logic.runner import TaskrRunner
 
 
-PRODUCT_DIR = "/agent/output/product input"
 HERMES_DIR = "/agent/output/hermes input"
 
 EXPECTED_PROMPT = (
