@@ -118,7 +118,7 @@ def seed_demo_data(repo: TaskrRepository) -> None:
     prompt_bindings = [
         ("b-api-move-input-files", "api", "Move Input Files"),
         ("b-hermes-generate-image-prompt", "hermes", "Generate Image Prompt"),
-        ("b-api-fake-image-success", "api", "Fake Image API"),
+        ("b-api-fake-image-success", "api", "Image API"),
     ]
     for binding in prompt_bindings:
         conn.execute(
@@ -156,7 +156,7 @@ def seed_demo_data(repo: TaskrRepository) -> None:
             json.dumps({"prompt": "$result.prompt"}), None, "stop",
         ),
         (
-            "n-fake-image-api", "fv-3", None, 2, "Fake Image API", "api", "b-api-fake-image-success",
+            "n-fake-image-api", "fv-3", None, 2, "Image API", "api", "b-api-fake-image-success",
             json.dumps({"prompt": "$nodes.n-generate-image-prompt.output.prompt"}),
             json.dumps({"success": "$result.success"}), None, "stop",
         ),
