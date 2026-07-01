@@ -29,7 +29,7 @@ def _make_runner() -> TaskrRunner:
     conn.executescript(SCHEMA_PATH.read_text())
     repo = TaskrRepository(conn)
     repo.seed_data()
-    return TaskrRunner(repo, FakeApiCaller(), FakeHermesService())
+    return TaskrRunner(repo, FakeApiCaller(image_delay=0), FakeHermesService())
 
 
 @pytest.fixture
@@ -78,9 +78,9 @@ def test_full_process_seeded_flow(client: TestClient) -> None:
     assert states_resp.status_code == 200, states_resp.text
     states = states_resp.json()["node_states"]
     by_id = {s["node_id"]: s for s in states}
-    assert by_id["n-collect"]["status"] == "completed"
-    assert by_id["n-foreach"]["status"] == "completed"
-    assert by_id["n-notify"]["status"] == "completed"
+    assert by_id["n-scrape"]["status"] == "completed"
+    assert by_id["n-research"]["status"] == "completed"
+    assert by_id["n-generate"]["status"] == "completed"
 
     # 5. Verify the final run shape omits the removed pause field
     run_resp = client.get(f"/runs/{run_id}")

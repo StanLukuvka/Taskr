@@ -146,7 +146,7 @@ class TestFlowNodeCRUD:
         flow = repo.load_flow_by_slug("soda-comparison")
         version = repo.create_flow_version(flow["flow_id"])
         # Reuse the seeded API binding.
-        return repo, version, "b-api-collect"
+        return repo, version, "b-api-scrape"
 
     def test_create_flow_node(self):
         """Creating a flow node persists it in the flow version."""

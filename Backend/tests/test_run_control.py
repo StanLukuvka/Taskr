@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 
 import pytest
@@ -31,7 +30,7 @@ def _make_repo() -> TaskrRepository:
 
 def _make_services():
     """Return deterministic fake integration services."""
-    return FakeApiCaller(), FakeHermesService()
+    return FakeApiCaller(image_delay=0), FakeHermesService()
 
 
 class TestRestartFrom:
@@ -46,7 +45,7 @@ class TestRestartFrom:
         source = runner.create_run("soda-comparison", {"brand": "Coke"})
 
         nodes = repo.load_top_level_nodes(source["fk_flow_version_id"])
-        # Skip the foreach node and target the final API node.
+        # Target the final API node (Generate Image).
         target = next(n for n in nodes if n["kind"] == "api" and n["ord"] > 0)
 
         new_run = runner.restart_from(source["run_id"], target["flow_node_id"])
@@ -65,12 +64,12 @@ class TestRestartFrom:
         repo.seed_data()
         source = runner.create_run("soda-comparison", {"brand": "Coke"})
 
-        # Tick until the first action completes. The demo flow first API node is "Collect products".
+        # Tick until the first action completes. The demo flow's first node is "Scrape Product".
         runner.tick(source["run_id"])
 
         nodes = repo.load_top_level_nodes(source["fk_flow_version_id"])
         first_node = nodes[0]
-        # Target the final API node so the foreach node is skipped in the restart.
+        # Target the final API node so the research node is skipped in the restart.
         target = next(n for n in nodes if n["kind"] == "api" and n["ord"] > 0)
         source_state = repo.get_or_create_node_state(source["run_id"], first_node["flow_node_id"], None)
         assert source_state["status"] == "completed"
@@ -92,7 +91,7 @@ class TestRestartFrom:
         runner.tick(source["run_id"])
 
         nodes = repo.load_top_level_nodes(source["fk_flow_version_id"])
-        # Target the final API node; only the collect node is upstream of it.
+        # Target the final API node (Generate Image); only the scrape node is upstream of it.
         target = next(n for n in nodes if n["kind"] == "api" and n["ord"] > 0)
         downstream = [n for n in nodes if n["ord"] > target["ord"]]
 
@@ -113,7 +112,12 @@ class TestRestartFrom:
         with pytest.raises(RunNotFoundError):
             runner.restart_from("run-missing", "n-doesnotmatter")
 
-    def test_restart_from_raises_400_for_foreach_target(self):
+    def test_restart_from_raises_400_for_non_action_target(self):
+        """restart_from rejects nodes that are not top-level action nodes.
+
+        The demo flow no longer has a foreach node, so we create a temporary
+        draft version with a foreach node to exercise this error path.
+        """
         repo = _make_repo()
         api, hermes = _make_services()
         runner = TaskrRunner(repo, api, hermes)
@@ -121,11 +125,24 @@ class TestRestartFrom:
         repo.seed_data()
         source = runner.create_run("soda-comparison", {})
 
-        nodes = repo.load_top_level_nodes(source["fk_flow_version_id"])
-        foreach_node = next(n for n in nodes if n["kind"] == "foreach")
+        # Create a draft version with a foreach node to test the guard.
+        flow = repo.load_flow_by_slug("soda-comparison")
+        version = repo.create_flow_version(flow["flow_id"])
+        repo.create_flow_node(
+            version["flow_version_id"],
+            "foreach",
+            0,
+            "Loop",
+            node_id="n-test-foreach",
+            items_path="$nodes.n-scrape.output.product",
+        )
+        repo.publish_flow_version(version["flow_version_id"])
+
+        source2 = runner.create_run(flow_version_id=version["flow_version_id"])
+        foreach_node = next(n for n in repo.load_top_level_nodes(version["flow_version_id"]) if n["kind"] == "foreach")
 
         with pytest.raises(RunRestartTargetError):
-            runner.restart_from(source["run_id"], foreach_node["flow_node_id"])
+            runner.restart_from(source2["run_id"], foreach_node["flow_node_id"])
 
     def test_restart_from_raises_404_for_node_not_in_flow_version(self):
         repo = _make_repo()
@@ -208,15 +225,40 @@ class TestRetryNode:
             runner.retry_node(run1["run_id"], other_state["node_state_id"])
 
     def test_retry_node_raises_400_for_loop_iteration_state(self):
+        """retry_node rejects node states inside a foreach loop.
+
+        The demo flow no longer has a foreach node, so we create a draft
+        version with one to exercise this error path.
+        """
         repo = _make_repo()
         api, hermes = _make_services()
         runner = TaskrRunner(repo, api, hermes)
 
         repo.seed_data()
-        run = runner.create_run("soda-comparison", {})
+        flow = repo.load_flow_by_slug("soda-comparison")
+        version = repo.create_flow_version(flow["flow_id"])
+        repo.create_flow_node(
+            version["flow_version_id"],
+            "foreach",
+            0,
+            "Loop",
+            node_id="n-test-foreach",
+            items_path="$nodes.n-scrape.output.product",
+        )
+        repo.create_flow_node(
+            version["flow_version_id"],
+            "api",
+            0,
+            "Child",
+            node_id="n-test-child",
+            parent_node_id="n-test-foreach",
+            binding_id="b-api-scrape",
+        )
+        repo.publish_flow_version(version["flow_version_id"])
 
-        # Create a real loop iteration via the foreach node in the seeded demo flow.
-        nodes = repo.load_top_level_nodes(run["fk_flow_version_id"])
+        run = runner.create_run(flow_version_id=version["flow_version_id"])
+
+        nodes = repo.load_top_level_nodes(version["flow_version_id"])
         foreach_node = next(n for n in nodes if n["kind"] == "foreach")
         child_node = next(n for n in repo.load_child_nodes(foreach_node["flow_node_id"]))
 

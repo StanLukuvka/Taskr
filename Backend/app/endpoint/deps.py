@@ -4,6 +4,7 @@ import os
 
 from app.data.repository import TaskrRepository
 from app.logic.integrations.api import ApiIntegration
+from app.logic.integrations.fake import FakeApiCaller, FakeHermesService
 from app.logic.integrations.hermes import HermesIntegration
 from app.logic.integrations.stripe import StripeIntegration
 from app.logic.runner import TaskrRunner
@@ -14,10 +15,22 @@ This module owns the integration singletons and the lightweight factory
 functions used by every endpoint module to obtain a runner or repository.
 Centralising them here keeps endpoint modules free of wiring concerns and
 ensures all endpoints share the same integration instances.
+
+When the ``TASKR_USE_FAKE_INTEGRATIONS`` environment variable is set to ``"1"``
+the runner is wired with :class:`FakeApiCaller` and
+:class:`FakeHermesService` instead of the real HTTP clients. This is used by
+the hackathon demo dev server so the full flow can be exercised without real
+external services.
 """
 
-_shared_api = ApiIntegration(allow_private=os.environ.get("TASKR_ALLOW_PRIVATE_URLS") == "1")
-_shared_hermes = HermesIntegration()
+_USE_FAKE = os.environ.get("TASKR_USE_FAKE_INTEGRATIONS") == "1"
+
+if _USE_FAKE:
+    _shared_api = FakeApiCaller(scrape_delay_polls=1)
+    _shared_hermes = FakeHermesService(delay_polls=2)
+else:
+    _shared_api = ApiIntegration(allow_private=os.environ.get("TASKR_ALLOW_PRIVATE_URLS") == "1")
+    _shared_hermes = HermesIntegration()
 _shared_stripe = StripeIntegration()
 
 

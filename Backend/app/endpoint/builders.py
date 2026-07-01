@@ -197,6 +197,7 @@ def build_run_list_item(run: dict[str, Any]) -> dict[str, Any]:
         "flow_id": run["fk_flow_id"],
         "flow_version_id": run["fk_flow_version_id"],
         "total_cost_cents": run.get("total_cost_cents", 0),
+        "context": run.get("context"),
         "created_at": run.get("created_at"),
         "started_at": run.get("started_at"),
         "finished_at": run.get("finished_at"),

@@ -1,8 +1,13 @@
 """Standalone demo data seeding for the Taskr backend.
 
 This module creates a sample "Soda Comparison" flow so the MVP can be
-exercised without a flow-design UI. The sample flow exercises API calls,
-a foreach loop, and Hermes task completion.
+exercised without a flow-design UI. The sample flow exercises the hackathon
+demo narrative:
+
+1. A fake API scrape node returns a product object (Pepsi Max).
+2. A Hermes agent node searches the internet for Pepsi Max reviews and
+   returns an image-generation prompt.
+3. An image API node sleeps briefly then returns a fake image URL.
 
 The function takes a TaskrRepository and populates it idempotently.
 """
@@ -24,7 +29,7 @@ def seed_demo_data(repo: TaskrRepository) -> None:
 
     conn.execute(
         "INSERT OR IGNORE INTO FLOW (flow_id, title, slug, description) VALUES (?, ?, ?, ?)",
-        ("flow-soda", "Soda Comparison", "soda-comparison", "Compare soda products"),
+        ("flow-soda", "Soda Comparison", "soda-comparison", "Scrape a product, research it, and generate an image"),
     )
     conn.execute(
         "INSERT OR IGNORE INTO FLOW_VERSION (flow_version_id, fk_flow_id, version, status) VALUES (?, ?, ?, ?)",
@@ -32,9 +37,9 @@ def seed_demo_data(repo: TaskrRepository) -> None:
     )
 
     bindings = [
-        ("b-api-collect", "api", "Collect Products"),
+        ("b-api-scrape", "api", "Scrape Product"),
         ("b-hermes-research", "hermes", "Research Product"),
-        ("b-api-notify", "api", "Send Notification"),
+        ("b-api-generate", "api", "Generate Image"),
     ]
     for binding in bindings:
         conn.execute(
@@ -44,33 +49,36 @@ def seed_demo_data(repo: TaskrRepository) -> None:
 
     conn.execute(
         "INSERT OR IGNORE INTO API_BINDING_CONFIG (fk_binding_id, method, url_template, completion_mode) VALUES (?, ?, ?, ?)",
-        ("b-api-collect", "POST", "https://fake.api/collect", "response"),
+        ("b-api-scrape", "GET", "https://fake.api/scrape", "response"),
     )
     conn.execute(
         "INSERT OR IGNORE INTO API_BINDING_CONFIG (fk_binding_id, method, url_template, completion_mode) VALUES (?, ?, ?, ?)",
-        ("b-api-notify", "POST", "https://fake.api/notify", "response"),
+        ("b-api-generate", "POST", "https://fake.api/generate-image", "response"),
     )
     conn.execute(
         "INSERT OR IGNORE INTO HERMES_BINDING_CONFIG (fk_binding_id, board, task_title_template, task_body_template) VALUES (?, ?, ?, ?)",
-        ("b-hermes-research", "taskr", "Research {{product.name}}", "Research {{product.name}} for soda comparison."),
+        (
+            "b-hermes-research",
+            "taskr",
+            "Research {{product.name}}",
+            "Search the internet for {{product.name}} reviews and return an image-generation prompt.",
+        ),
     )
 
     flow_nodes = [
         (
-            "n-collect", "fv-1", None, 0, "Collect Products", "api", "b-api-collect",
-            json.dumps({}), json.dumps({"products": "$result.products"}), None, "stop",
+            "n-scrape", "fv-1", None, 0, "Scrape Product", "api", "b-api-scrape",
+            json.dumps({}), json.dumps({"product": "$result.product"}), None, "stop",
         ),
         (
-            "n-foreach", "fv-1", None, 1, "For Each Product", "foreach", None,
-            json.dumps({}), json.dumps({}), "$nodes.n-collect.output.products", "stop",
+            "n-research", "fv-1", None, 1, "Research Product", "hermes", "b-hermes-research",
+            json.dumps({"product": "$nodes.n-scrape.output.product"}),
+            json.dumps({"prompt": "$result.prompt"}), None, "stop",
         ),
         (
-            "n-research", "fv-1", "n-foreach", 0, "Research Product", "hermes", "b-hermes-research",
-            json.dumps({"product": "$item"}), json.dumps({"result": "$result.summary"}), None, "stop",
-        ),
-        (
-            "n-notify", "fv-1", None, 2, "Send Notification", "api", "b-api-notify",
-            json.dumps({}), json.dumps({}), None, "continue",
+            "n-generate", "fv-1", None, 2, "Generate Image", "api", "b-api-generate",
+            json.dumps({"prompt": "$nodes.n-research.output.prompt"}),
+            json.dumps({"image_url": "$result.image_url"}), None, "stop",
         ),
     ]
     for node in flow_nodes:

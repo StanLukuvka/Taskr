@@ -139,6 +139,7 @@ class RunListItem(BaseModel):
     flow_id: str
     flow_version_id: str
     total_cost_cents: int = 0
+    context: Any | None = None
     created_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None

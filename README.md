@@ -1,4 +1,10 @@
-# Taskr
+<div align="center">
+  <img src="Frontend/taskr-icon-kit/favicon.svg" alt="Taskr logo" width="120">
+  <h1>Taskr</h1>
+  <p><strong>Durable flows for persistent questions.</strong></p>
+</div>
+
+---
 
 The point of enterprise software is ultimately one thing: **closing the gap between a question and an answer**.
 
@@ -70,11 +76,29 @@ Persistent-business-operation graphs are useful because:
 
 ---
 
+## Design system
+
+Taskr's interface is built around a compact, high-contrast shell.
+
+| Role | Value | Usage |
+|---|---|---|
+| **Background** | `#0a0a0a` | App shell, empty states |
+| **Surface** | `#141414` | Cards, panels, code blocks |
+| **Border** | `#2a2a2a` | Dividers, table borders |
+| **Text** | `#ededed` | Primary copy |
+| **Muted text** | `#888888` | Secondary labels |
+| **Accent** | `#ffac02` | Titles, CTAs, active states |
+| **Font** | `JetBrains Mono` | UI, code, data tables |
+
+Corners are square. No rounded radii anywhere.
+
+---
+
 ## Hermes integration
 
 Taskr talks to Hermes over API, not as a local plugin.
 
-> Run it on NemoClaw, local, a $5 VPS, a GPU cluster, or serverless infrastructure that costs nearly nothing when idle. 
+> Run it on NemoClaw, local, a $5 VPS, a GPU cluster, or serverless infrastructure that costs nearly nothing when idle.
 >
 > — [Hermes README](https://hermes-agent.nousresearch.com/)
 
@@ -83,6 +107,15 @@ For hackathon demos and GPU workloads this means Taskr's agent nodes can run on 
 ---
 
 ## Quick start
+
+Ports are config-driven. Copy `.env.example` to `.env` in each project, or use the defaults.
+
+| Service | Default port | Config env var |
+|---|---|---|
+| Frontend | 9112 | `VITE_PORT` in `Frontend/.env` |
+| Backend | 9113 | `TASKR_PORT` in `Backend/.env` |
+
+### Backend
 
 The backend lives in `Backend/` and uses `uv`.
 
@@ -96,9 +129,21 @@ uv sync
 rm -f taskr.db taskr.db-shm taskr.db-wal
 uv run pytest -q
 
-# start server (uses taskr.db in this directory)
-uv run uvicorn app.main.app:app --host 0.0.0.0 --port 8000
+# start server (uses taskr.db in this directory; defaults to port 9113)
+uv run python -m app.main
 ```
+
+### Frontend
+
+The browser interface lives in `Frontend/` (React + Vite + TypeScript).
+
+```bash
+cd Frontend
+npm install
+npm run dev
+```
+
+The dev server defaults to `http://localhost:9112` and proxies API routes to the backend at `http://127.0.0.1:9113`.
 
 ## API overview
 
@@ -131,8 +176,8 @@ The browser interface lives in `Frontend/` (React + Vite + TypeScript). The back
 
 When the server is running:
 
-- **Swagger UI** — `http://localhost:8000/docs`
-- **Raw OpenAPI spec** — `http://localhost:8000/openapi.json`
+- **Swagger UI** — `http://localhost:9113/docs`
+- **Raw OpenAPI spec** — `http://localhost:9113/openapi.json`
 
 A static export of the spec is committed at `Backend/openapi.json`.
 
@@ -141,19 +186,27 @@ A static export of the spec is committed at `Backend/openapi.json`.
 ```
 Backend/
   app/
-    main/app.py         # FastAPI app assembly
-    endpoint/           # routers, models, builders, deps
-    logic/              # runner, integrations
-    data/               # repository, schema
-  tests/                # pytest suite
-  openapi.json          # OpenAPI spec
-  pyproject.toml        # dependencies
-  uv.lock               # locked dependency graph
-Frontend/               # React + Vite + TypeScript frontend
-NODES.md                # current project status
-NOTES.md                # developer guide
+    main/                 # FastAPI app assembly
+    endpoint/             # routers, models, builders, deps
+    logic/                # runner, integrations
+    data/                 # repository, schema
+  tests/                  # pytest suite
+  openapi.json            # OpenAPI spec
+  pyproject.toml          # dependencies
+  uv.lock                 # locked dependency graph
+Frontend/                 # React + Vite + TypeScript frontend
+frontend_mvp/             # shell scripts for manual end-to-end testing
+NODES.md                  # current project status
+NOTES.md                  # developer guide
 ```
 
-## License
+## Future features
 
-MIT
+1. Move from list display to graph display
+2. Gates and `if` statement nodes
+3. First-class integrations with complex Hermes agent features
+4. First-class integrations with deterministic systems (Windmill, etc.)
+5. API/cron runners for flows
+6. Goal subtask groups with agentic nudgers
+7. Further refinements for functionality and UI
+8. And more

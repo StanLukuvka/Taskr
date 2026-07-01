@@ -29,7 +29,7 @@ def _make_runner() -> TaskrRunner:
     """Create a runner backed by an in-memory repo with demo data seeded."""
     repo = _make_repo()
     repo.seed_data()
-    api = FakeApiCaller()
+    api = FakeApiCaller(image_delay=0)
     hermes = FakeHermesService()
     return TaskrRunner(repo, api, hermes)
 

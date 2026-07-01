@@ -1,4 +1,4 @@
-"""Unit tests for the runner tick engine and foreach loops.
+"""Unit tests for the runner tick engine.
 
 These tests exercise the core state machine directly (no HTTP layer) using
 in-memory SQLite and the deterministic fake integrations.
@@ -30,7 +30,7 @@ def _make_runner() -> TaskrRunner:
     """Create a runner backed by an in-memory repo with demo data seeded."""
     repo = _make_repo()
     repo.seed_data()
-    api = FakeApiCaller()
+    api = FakeApiCaller(image_delay=0)
     hermes = FakeHermesService()
     return TaskrRunner(repo, api, hermes)
 
@@ -89,51 +89,6 @@ class TestTick:
 
 
 # ---------------------------------------------------------------------------
-# Foreach
-# ---------------------------------------------------------------------------
-
-class TestForeach:
-    """Tests for foreach node execution."""
-
-    def test_foreach_creates_iterations(self):
-        """A foreach node creates one iteration per item from items_path."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        assert runner.repo.count_completed_iterations(run["run_id"]) == 2
-
-    def test_foreach_completes_directly(self):
-        """The foreach completes directly with the fake Hermes service."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        run_status = runner.repo.load_run(run["run_id"])["status"]
-        assert run_status == "completed"
-        assert runner.repo.count_completed_iterations(run["run_id"]) == 2
-
-    def test_foreach_no_duplicate_dispatches(self):
-        """No node_state is dispatched more than once during foreach execution."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        assert runner.repo.count_duplicate_dispatches(run["run_id"]) == 0
-
-    def test_foreach_all_nodes_terminal_after_completion(self):
-        """Every node_state is terminal after the run completes."""
-        runner = _make_runner()
-        run = runner.create_run("soda-comparison")
-        runner.tick()
-
-        states = runner.repo.load_node_states_for_run(run["run_id"])
-        for s in states:
-            assert s["status"] in ("completed", "failed"), \
-                f"Node state {s['node_state_id']} is non-terminal: {s['status']}"
-
-
-# ---------------------------------------------------------------------------
 # Run creation and context
 # ---------------------------------------------------------------------------
 
@@ -146,7 +101,7 @@ class TestCreateRun:
         run = runner.create_run("soda-comparison")
 
         states = runner.repo.load_node_states_for_run(run["run_id"])
-        # The demo flow has 3 top-level nodes: Collect Products, For Each, Send Notification.
+        # The demo flow has 3 top-level nodes: Scrape, Research, Generate.
         assert len(states) == 3
         for s in states:
             assert s["status"] == "pending"

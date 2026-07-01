@@ -37,3 +37,18 @@ requirements.txt
 taskr_frontend_plan_v3.md
 taskr_hermes_architecture.md
 .hermes/plans/
+
+# Environment / secrets
+Backend/.env
+Frontend/.env
+Frontend/.env.production
+*.local
+
+# Frontend planning artifacts
+Frontend/.hermes/
+Frontend/plans/
+
+# Frontend build
+Frontend/node_modules/
+Frontend/dist
+Frontend/dist-ssr

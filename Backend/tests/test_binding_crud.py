@@ -263,7 +263,7 @@ class TestBindingEndpoints:
         app.dependency_overrides[_get_repo] = lambda: repo
         flow = repo.load_flow_by_slug("soda-comparison")
         version = repo.create_flow_version(flow["flow_id"])
-        binding_id = "b-api-collect"
+        binding_id = "b-api-scrape"
 
         repo.create_flow_node(
             flow_version_id=version["flow_version_id"],

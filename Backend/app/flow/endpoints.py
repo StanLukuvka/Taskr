@@ -297,6 +297,32 @@ def list_flows():
 
 
 @router.get(
+    "/flows/{slug}",
+    response_model=FlowResponseFull,
+    tags=["Flows"],
+    operation_id="flows_get_flow_by_slug",
+    summary="Get a flow by slug",
+)
+def get_flow_by_slug(slug: str):
+    """Retrieve a flow by its slug, including version metadata.
+
+    Args:
+        slug: The URL-friendly slug of the flow.
+
+    Returns:
+        A FlowResponseFull containing the flow metadata and active version id.
+
+    Raises:
+        FlowNotFoundError: 404 if the flow does not exist.
+    """
+    repo = _get_repo()
+    flow = repo.load_flow_by_slug(slug)
+    if not flow:
+        raise FlowNotFoundError(f"Flow {slug} not found", entity_id=slug)
+    return build_flow_response(flow, repo)
+
+
+@router.get(
     "/flow_versions/{flow_version_id}",
     response_model=FlowVersionResponse,
     tags=["Flow Versions"],

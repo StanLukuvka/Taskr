@@ -1,9 +1,9 @@
 """Vertical slice test for the Taskr state machine.
 
 This test exercises the core happy path without a real web server:
-- an API node completes immediately,
-- a foreach node fans out over the resulting list,
-- Hermes child nodes complete directly,
+- a scrape API node returns a product (Pepsi Max),
+- a Hermes research node returns an image-generation prompt,
+- a generate-image API node returns a fake image URL,
 - the run completes without deprecated interruption state.
 
 It asserts direct completion and verifies that no node_state is dispatched more
@@ -32,7 +32,7 @@ def _make_repo() -> TaskrRepository:
 def test_run_completes_without_interruption():
     """End-to-end state machine test using the demo soda-comparison flow."""
     repo = _make_repo()
-    api = FakeApiCaller()
+    api = FakeApiCaller(image_delay=0)
     hermes = FakeHermesService()
     runner = TaskrRunner(repo, api, hermes)
 
@@ -43,9 +43,6 @@ def test_run_completes_without_interruption():
 
     run = repo.load_run(run["run_id"])
     assert run["status"] == "completed", f"Expected completed, got {run['status']}"
-
-    # The demo list has two products, so both iterations must be done.
-    assert repo.count_completed_iterations(run["run_id"]) == 2
 
     # The state machine should not have retried any node_state.
     assert repo.count_duplicate_dispatches(run["run_id"]) == 0

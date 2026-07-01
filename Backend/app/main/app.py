@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -55,11 +56,12 @@ OPENAPI_TAGS = [
 async def lifespan(app: FastAPI):
     """Initialize the application database and seed demo data on startup.
 
-    Resets the database to a clean state on every restart so the demo
-    always starts from a known-good baseline. This avoids stale data
-    inconsistencies from schema changes or partial seeds.
+    By default resets the database to a known-good baseline so the demo is
+    deterministic. Set ``TASKR_PERSIST_DB=1`` to keep existing runs across
+    restarts during development.
     """
-    TaskrRepository.reset_db()
+    if os.environ.get("TASKR_PERSIST_DB") != "1":
+        TaskrRepository.reset_db()
     conn = TaskrRepository.get_connection()
     try:
         repo = TaskrRepository(conn)
