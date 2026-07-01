@@ -383,7 +383,7 @@ class TaskrRunner:
                 if binding_config.get("url_template") == "stripe://top-up":
                     result = self._start_stripe_top_up(run, state, binding_config, state["input"])
                 else:
-                    result = self.api.start(binding_config, state["input"])
+                    result = self.api.start(binding_config, state["input"], run_id=run["run_id"])
             else:
                 state["external_ref"] = state.get("external_ref") or f"hermes-{state['node_state_id']}"
                 result = self.hermes.create_task(
@@ -529,7 +529,9 @@ class TaskrRunner:
                 scope=run.get("context") or {},
             )
             state["finished_at"] = self._now()
-            cost_cents = int((result.output or {}).get("cost_cents") or 0) if isinstance(result.output, dict) else 0
+            cost_cents = result.cost_cents
+            if cost_cents is None:
+                cost_cents = int((result.output or {}).get("cost_cents") or 0) if isinstance(result.output, dict) else 0
             state["cost_cents"] = int(state.get("cost_cents") or 0) + cost_cents
             self.repo.save_node_state(state)
             if cost_cents:
@@ -762,7 +764,15 @@ class TaskrRunner:
                     "status": state.get("status"),
                 }
 
-        return {"nodes": node_outputs, "scope": run.get("context") or {}}
+        return {
+            "nodes": node_outputs,
+            "scope": run.get("context") or {},
+            "run": {
+                "run_id": run.get("run_id"),
+                "total_cost_cents": run.get("total_cost_cents") or 0,
+                "status": run.get("status"),
+            },
+        }
 
     def _now(self) -> str:
         """Return the current UTC time as an ISO 8601 string.

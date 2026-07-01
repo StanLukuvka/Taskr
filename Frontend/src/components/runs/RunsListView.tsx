@@ -137,6 +137,7 @@ export function RunsListView() {
                 onChange={(event) => setFlowSlug(event.target.value)}
               >
                 <option value="soda-comparison">soda-comparison</option>
+                <option value="product-infographic">product-infographic</option>
                 <option value="frontend-demo">frontend-demo</option>
               </select>
             </label>

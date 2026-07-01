@@ -121,11 +121,18 @@ class HermesIntegration:
 
     def _to_result(self, payload: dict[str, Any]) -> IntegrationResult:
         status = payload.get("status", "failed")
+        cost_cents = payload.get("cost_cents")
+        if cost_cents is not None:
+            try:
+                cost_cents = int(cost_cents)
+            except (TypeError, ValueError):
+                cost_cents = None
         if status in {"started", "running"}:
             return IntegrationResult(
                 status="running",
                 external_ref=payload.get("run_id"),
                 native_state=payload,
+                cost_cents=cost_cents,
             )
         if status == "completed":
             return IntegrationResult(
@@ -133,6 +140,7 @@ class HermesIntegration:
                 external_ref=payload.get("run_id"),
                 output=payload.get("output"),
                 native_state=payload,
+                cost_cents=cost_cents,
             )
         return IntegrationResult(
             status="failed",
@@ -142,4 +150,5 @@ class HermesIntegration:
             error_category="external_failure",
             retryable=False,
             native_state=payload,
+            cost_cents=cost_cents,
         )

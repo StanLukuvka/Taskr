@@ -14,3 +14,4 @@ class IntegrationResult:
     error_category: str | None = None
     retryable: bool | None = None
     native_state: dict | None = None
+    cost_cents: int | None = None

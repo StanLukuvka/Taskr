@@ -209,7 +209,12 @@ class ApiIntegration:
                 headers["Authorization"] = f"Bearer {token}"
         return headers
 
-    def start(self, binding_config: dict[str, Any], input_data: dict[str, Any]) -> IntegrationResult:
+    def start(
+        self,
+        binding_config: dict[str, Any],
+        input_data: dict[str, Any],
+        run_id: str | None = None,
+    ) -> IntegrationResult:
         """Execute the configured HTTP request."""
         method = binding_config.get("method", "GET")
         url_template = binding_config["url_template"]
